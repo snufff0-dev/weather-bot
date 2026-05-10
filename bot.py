@@ -10,6 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 import requests
 import schedule
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
 # Загружаем .env
 load_dotenv()
