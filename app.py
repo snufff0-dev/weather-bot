@@ -15,7 +15,9 @@ def health():
     return "OK", 200
 
 def run_bot():
-    asyncio.run(bot_main())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(bot_main())
 
 threading.Thread(target=run_bot, daemon=True).start()
 
