@@ -15,16 +15,29 @@ def health():
     return "OK", 200
 
 def run_bot():
-    """Запуск бота в отдельном событийном цикле"""
+    """Запуск бота без обработки сигналов"""
+    # Создаём новый цикл событий
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    # Отключаем обработку сигналов (они не нужны в потоке)
+    # Отключаем все обработчики сигналов глобально
+    import signal
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    
+    # Патчим метод add_signal_handler у цикла
+    original_add_signal = loop.add_signal_handler
     loop.add_signal_handler = lambda *args, **kwargs: None
     
-    loop.run_until_complete(bot_main())
+    # Запускаем бота
+    try:
+        loop.run_until_complete(bot_main())
+    except Exception as e:
+        print(f"Ошибка бота: {e}")
+    finally:
+        loop.close()
 
-# Запускаем бота в фоновом потоке
+# Запускаем бота
 threading.Thread(target=run_bot, daemon=True).start()
 
 if __name__ == '__main__':
