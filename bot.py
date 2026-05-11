@@ -1,3 +1,4 @@
+python
 import os
 import logging
 import asyncio
@@ -26,6 +27,17 @@ dp = Dispatcher()
 user_cities = {}
 user_subscription_time = {}
 logging.basicConfig(level=logging.INFO)
+
+# Словарь для перевода дней недели на русский
+DAYS_RU = {
+    'Monday': 'Понедельник',
+    'Tuesday': 'Вторник',
+    'Wednesday': 'Среда',
+    'Thursday': 'Четверг',
+    'Friday': 'Пятница',
+    'Saturday': 'Суббота',
+    'Sunday': 'Воскресенье'
+}
 
 # ==================== КЛАВИАТУРЫ ====================
 
@@ -236,7 +248,7 @@ def get_driver_tips_for_weather(temp: float, wind_speed: float, humidity: float,
     return "\n".join(tips[:4])  # Ограничиваем 4 советами
 
 def format_forecast_message(forecast_data: dict) -> str:
-    """Форматирование прогноза на 5 дней"""
+    """Форматирование прогноза на 5 дней с русскими названиями дней"""
     if not forecast_data['success']:
         return f"❌ {forecast_data['error']}"
     
@@ -244,11 +256,20 @@ def format_forecast_message(forecast_data: dict) -> str:
     message += "━" * 30 + "\n\n"
     
     for i, day in enumerate(forecast_data['forecasts']):
-        day_name = day['date'].strftime('%A').capitalize()
+        # Получаем название дня на русском
+        eng_day = day['date'].strftime('%A')
+        day_name = DAYS_RU.get(eng_day, eng_day)
+        
         if i == 0:
             day_name = "Сегодня"
         elif i == 1:
             day_name = "Завтра"
+        
+        # Добавляем день недели в скобках для завтрашнего дня
+        if i == 1:
+            day_name += f" ({DAYS_RU.get(eng_day, eng_day)})"
+        elif i > 1:
+            day_name = DAYS_RU.get(eng_day, eng_day)
         
         message += f"📌 *{day_name}* {day['date'].strftime('%d.%m')}\n"
         message += f"🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C (средняя {day['temp_day']:.0f}°C)\n"
