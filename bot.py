@@ -3,13 +3,14 @@ import logging
 import asyncio
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 import requests
 import schedule
+
 asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
 # Загружаем .env
@@ -31,9 +32,10 @@ logging.basicConfig(level=logging.INFO)
 def get_main_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🌤 Погода сейчас"), KeyboardButton(text="🚗 Советы водителю")],
-            [KeyboardButton(text="⚙️ Установить город"), KeyboardButton(text="🔔 Подписка")],
-            [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ О боте")]
+            [KeyboardButton(text="🌤 Погода сейчас"), KeyboardButton(text="📅 Прогноз на 5 дней")],
+            [KeyboardButton(text="🚗 Советы водителю"), KeyboardButton(text="⚙️ Установить город")],
+            [KeyboardButton(text="🔔 Подписка"), KeyboardButton(text="❓ Помощь")],
+            [KeyboardButton(text="ℹ️ О боте")]
         ],
         resize_keyboard=True,
         input_field_placeholder="Нажмите кнопку или напишите город..."
@@ -56,8 +58,8 @@ def get_cities_keyboard():
 def get_weather_keyboard():
     keyboard = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🔄 Обновить погоду"), KeyboardButton(text="🌤 Другой город")],
-            [KeyboardButton(text="🔔 Подписаться на рассылку"), KeyboardButton(text="⬅️ Главное меню")]
+            [KeyboardButton(text="🔄 Обновить погоду"), KeyboardButton(text="📅 Прогноз на 5 дней")],
+            [KeyboardButton(text="🌤 Другой город"), KeyboardButton(text="⬅️ Главное меню")]
         ],
         resize_keyboard=True
     )
@@ -84,8 +86,9 @@ def get_back_keyboard():
 # ==================== ФУНКЦИИ ПОГОДЫ ====================
 
 def get_weather(city: str) -> dict:
+    """Текущая погода"""
     try:
-        url = f"http://ru.api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
+        url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
         response = requests.get(url, timeout=10)
         data = response.json()
 
@@ -123,11 +126,158 @@ def get_weather(city: str) -> dict:
     except Exception as e:
         return {'success': False, 'error': f'Ошибка: {e}'}
 
+def get_5day_forecast(city: str) -> dict:
+    """Прогноз на 5 дней (каждые 3 часа)"""
+    try:
+        url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+
+        if response.status_code == 200:
+            forecasts = []
+            daily_forecasts = {}
+            
+            for item in data['list']:
+                dt = datetime.fromtimestamp(item['dt'])
+                date_key = dt.strftime('%Y-%m-%d')
+                
+                if date_key not in daily_forecasts:
+                    daily_forecasts[date_key] = {
+                        'temps': [],
+                        'descriptions': [],
+                        'wind_speeds': [],
+                        'humidity': [],
+                        'rain': False,
+                        'snow': False,
+                        'date': dt
+                    }
+                
+                daily_forecasts[date_key]['temps'].append(item['main']['temp'])
+                daily_forecasts[date_key]['descriptions'].append(item['weather'][0]['description'])
+                daily_forecasts[date_key]['wind_speeds'].append(item['wind']['speed'])
+                daily_forecasts[date_key]['humidity'].append(item['main']['humidity'])
+                
+                if 'rain' in item and item['rain'].get('3h', 0) > 0:
+                    daily_forecasts[date_key]['rain'] = True
+                if 'snow' in item and item['snow'].get('3h', 0) > 0:
+                    daily_forecasts[date_key]['snow'] = True
+            
+            # Формируем прогноз на 5 дней
+            for date_key, day_data in list(daily_forecasts.items())[:5]:
+                forecasts.append({
+                    'date': day_data['date'],
+                    'temp_max': max(day_data['temps']),
+                    'temp_min': min(day_data['temps']),
+                    'temp_day': sum(day_data['temps']) / len(day_data['temps']),
+                    'description': max(set(day_data['descriptions']), key=day_data['descriptions'].count),
+                    'wind_speed': max(day_data['wind_speeds']),
+                    'humidity': sum(day_data['humidity']) / len(day_data['humidity']),
+                    'rain': day_data['rain'],
+                    'snow': day_data['snow']
+                })
+            
+            return {
+                'success': True,
+                'city': city,
+                'forecasts': forecasts
+            }
+        else:
+            return {'success': False, 'error': 'Город не найден'}
+    except Exception as e:
+        return {'success': False, 'error': f'Ошибка: {e}'}
+
+def get_driver_tips_for_weather(temp: float, wind_speed: float, humidity: float, 
+                                 description: str, rain: bool = False, snow: bool = False) -> str:
+    """Советы водителю на основе погодных условий"""
+    tips = []
+    
+    # Температурные советы
+    if temp < -30:
+        tips.append("❄️❄️ ЭКСТРЕМАЛЬНЫЙ МОРОЗ: не выезжай без крайней необходимости, аккумулятор может сесть мгновенно")
+    elif temp < -20:
+        tips.append("❄️ Сильный мороз: прогревай двигатель 10-15 минут, проверь аккумулятор и антифриз")
+    elif temp < -10:
+        tips.append("❄️ Холодно: возможен трудный запуск, держи дистанцию ×2")
+    elif temp < 0:
+        tips.append("⚠️ Гололед: избегай резких ускорений и торможений, дистанция ×3")
+    elif temp > 35:
+        tips.append("🔥 Экстремальная жара: проверь уровень охлаждающей жидкости, не оставляй детей в машине")
+    elif temp > 30:
+        tips.append("🔥 Сильная жара: используй кондиционер, следи за температурой двигателя")
+    elif temp > 25:
+        tips.append("☀️ Жарко: проветривай салон, не оставляй гаджеты на солнце")
+    
+    # Ветер
+    if wind_speed > 20:
+        tips.append("💨 УРАГАННЫЙ ВЕТЕР: будь предельно осторожен на мостах и эстакадах, снизь скорость")
+    elif wind_speed > 15:
+        tips.append("💨 Очень сильный ветер: крепче держи руль, особенно на открытых участках")
+    elif wind_speed > 10:
+        tips.append("💨 Сильный ветер: будь внимателен при обгоне фур")
+    
+    # Осадки и видимость
+    if rain:
+        tips.append("🌧️ ДОЖДЬ: включи фары, проверь дворники, дистанция ×2, избегай луж")
+    if snow:
+        tips.append("🌨️ СНЕГОПАД: проверь резину, чисти снег с крыши, включай противотуманки")
+    
+    if 'гроза' in description:
+        tips.append("⛈️ ГРОЗА: по возможности пережди, не паркуйся под деревьями и ЛЭП")
+    if 'туман' in description:
+        tips.append("🌫️ ТУМАН: используй противотуманные фары, снизь скорость, ориентируйся по разметке")
+    
+    # Влажность
+    if humidity > 85:
+        tips.append("💧 Высокая влажность: стекла могут запотевать, используй кондиционер или обогрев")
+    
+    if not tips:
+        tips.append("✅ Погода благоприятная, хорошей дороги!")
+    
+    return "\n".join(tips[:4])  # Ограничиваем 4 советами
+
+def format_forecast_message(forecast_data: dict) -> str:
+    """Форматирование прогноза на 5 дней"""
+    if not forecast_data['success']:
+        return f"❌ {forecast_data['error']}"
+    
+    message = f"📅 *ПРОГНОЗ НА 5 ДНЕЙ - {forecast_data['city'].upper()}*\n"
+    message += "━" * 30 + "\n\n"
+    
+    for i, day in enumerate(forecast_data['forecasts']):
+        day_name = day['date'].strftime('%A').capitalize()
+        if i == 0:
+            day_name = "Сегодня"
+        elif i == 1:
+            day_name = "Завтра"
+        
+        message += f"📌 *{day_name}* {day['date'].strftime('%d.%m')}\n"
+        message += f"🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C (средняя {day['temp_day']:.0f}°C)\n"
+        message += f"☁️ {day['description'].capitalize()}\n"
+        message += f"💨 Ветер до {day['wind_speed']:.0f} м/с\n"
+        
+        # Иконки осадков
+        if day['rain']:
+            message += "🌧️ Ожидаются дожди\n"
+        if day['snow']:
+            message += "🌨️ Ожидается снег\n"
+        
+        # Советы водителю для этого дня
+        tips = get_driver_tips_for_weather(
+            day['temp_day'], day['wind_speed'], day['humidity'],
+            day['description'], day['rain'], day['snow']
+        )
+        message += f"\n🚗 *Советы:* {tips}\n\n"
+        message += "─" * 20 + "\n\n"
+    
+    return message
+
 def format_weather_message(weather: dict) -> str:
+    """Форматирование текущей погоды"""
     if not weather['success']:
         return f"❌ {weather['error']}"
+    
     message = (
-        f"🌍 *ПРОГНОЗ В {weather['city'].upper()}*\n"
+        f"🌍 *ПОГОДА В {weather['city'].upper()}*\n"
         f"📅 {weather['time']}\n"
         f"☁️ {weather['description'].capitalize()}\n"
         f"🌡️ *{weather['temp']:.1f}°C* (ощущается {weather['feels_like']:.1f}°C)\n"
@@ -138,34 +288,15 @@ def format_weather_message(weather: dict) -> str:
         f"☁️ Облачность: {weather['clouds']}%\n\n"
         f"🚗 *СОВЕТЫ ВОДИТЕЛЮ:*\n"
     )
-    if weather['temp'] < -20:
-        message += "❄️ *Экстремальный холод*: проверь аккумулятор, прогревай 10-15 мин\n"
-    elif weather['temp'] < -10:
-        message += "❄️ *Очень холодно*: проверь антифриз, трудный запуск\n"
-    elif weather['temp'] < 0:
-        message += "⚠️ *Гололёд*: дистанция ×2, избегай резких движений\n"
-    elif weather['temp'] > 30:
-        message += "🔥 *Жара*: проверь охлаждающую жидкость, кондиционер\n"
-    if weather['humidity'] > 80:
-        message += "💧 *Высокая влажность*: стекла могут запотевать\n"
-    if weather['wind_speed'] > 15:
-        message += "💨 *Ураганный ветер*: будь осторожен на мостах\n"
-    elif weather['wind_speed'] > 10:
-        message += "💨 *Сильный ветер*: крепче держи руль\n"
-    if weather['visibility'] < 1:
-        message += "🌫️ *Очень плохая видимость*: противотуманки, снизь скорость\n"
-    elif weather['visibility'] < 4:
-        message += "🌫️ *Плохая видимость*: включи ближний свет\n"
-    if 'дождь' in weather['description']:
-        message += "🌧️ *Дождь*: проверь дворники, дистанция ×2\n"
-    if 'снег' in weather['description']:
-        message += "🌨️ *Снегопад*: проверь резину, чисти снег с крыши\n"
-    if 'туман' in weather['description']:
-        message += "🌫️ *Туман*: используй противотуманки\n"
-    if 'гроза' in weather['description']:
-        message += "⛈️ *Гроза*: пережди, не паркуйся под деревьями\n"
-    if message.count('\n') < 12:
-        message += "✅ Условия благоприятные, хорошей дороги!\n"
+    
+    # Советы для текущей погоды
+    tips = get_driver_tips_for_weather(
+        weather['temp'], weather['wind_speed'], weather['humidity'],
+        weather['description'], 'дождь' in weather['description'], 
+        'снег' in weather['description']
+    )
+    message += tips
+    
     return message
 
 # ==================== ОБРАБОТЧИКИ ====================
@@ -173,8 +304,11 @@ def format_weather_message(weather: dict) -> str:
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     welcome_text = (
-        "👋 *Добро пожаловать в WeatherBot!*\n\n"
-        "Я помогаю водителям узнавать погоду и получать полезные советы.\n\n"
+        "👋 *Добро пожаловать в WeatherBot для водителей!*\n\n"
+        "🚗 Я помогаю водителям:\n"
+        "• Узнавать текущую погоду\n"
+        "• Получать прогноз на 5 дней\n"
+        "• Даю полезные советы по вождению\n\n"
         "👇 *Нажми кнопку или напиши город:*"
     )
     await message.answer(welcome_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
@@ -189,14 +323,49 @@ async def weather_now(message: Message):
     else:
         await message.answer("🌆 *Выберите город* из списка или напишите его название:", parse_mode="Markdown", reply_markup=get_cities_keyboard())
 
+@dp.message(F.text == "📅 Прогноз на 5 дней")
+async def forecast_5days(message: Message):
+    chat_id = message.chat.id
+    if chat_id in user_cities:
+        city = user_cities[chat_id]
+        await message.answer("🔍 *Получаю прогноз на 5 дней...*", parse_mode="Markdown")
+        forecast = get_5day_forecast(city)
+        await message.answer(format_forecast_message(forecast), parse_mode="Markdown", reply_markup=get_weather_keyboard())
+    else:
+        await message.answer("🌆 *Сначала установите город* в настройках!", parse_mode="Markdown", reply_markup=get_cities_keyboard())
+
 @dp.message(F.text == "🚗 Советы водителю")
 async def driver_tips(message: Message):
     tips = (
         "🚗 *ПОЛЕЗНЫЕ СОВЕТЫ ВОДИТЕЛЮ*\n\n"
-        "❄️ *Зимой:*\n• Возим щетку и скребок\n• Проверяем аккумулятор\n• Дистанция ×2\n\n"
-        "☔ *В дождь:*\n• Включаем фары днем\n• Не влетаем в лужи\n• Проверяем дворники\n\n"
-        "☀️ *В жару:*\n• Следим за антифризом\n• Не оставляем детей/животных\n• Проветриваем салон\n\n"
-        "🌫️ *В туман:*\n• Противотуманки\n• Скорость ниже\n• Ориентир по разметке"
+        "❄️ *ЗИМА:*\n"
+        "• Возим щетку и скребок\n"
+        "• Проверяем аккумулятор\n"
+        "• Дистанция ×2-3\n"
+        "• Зимняя резина обязательна\n\n"
+        
+        "🌧️ *ДОЖДЬ:*\n"
+        "• Включаем фары днем\n"
+        "• Не влетаем в глубокие лужи\n"
+        "• Проверяем дворники\n"
+        "• Дистанция ×2\n\n"
+        
+        "☀️ *ЖАРА:*\n"
+        "• Следим за антифризом\n"
+        "• Не оставляем детей/животных\n"
+        "• Проветриваем салон\n"
+        "• Давление в шинах\n\n"
+        
+        "🌫️ *ТУМАН:*\n"
+        "• Противотуманные фары\n"
+        "• Снижаем скорость\n"
+        "• Ориентир по разметке\n"
+        "• Без резких маневров\n\n"
+        
+        "⚠️ *ГОЛОЛЕД:*\n"
+        "• Плавные движения\n"
+        "• Дистанция ×3\n"
+        "• Торможение двигателем"
     )
     await message.answer(tips, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
@@ -219,20 +388,30 @@ async def subscription_menu(message: Message):
 async def help_menu(message: Message):
     help_text = (
         "❓ *ПОМОЩЬ И КОМАНДЫ*\n\n"
-        "🌤 Погода сейчас - узнать погоду\n"
-        "🚗 Советы водителю - рекомендации\n"
+        "🌤 Погода сейчас - узнать текущую погоду\n"
+        "📅 Прогноз на 5 дней - подробный прогноз\n"
+        "🚗 Советы водителю - общие рекомендации\n"
         "⚙️ Установить город - город по умолчанию\n"
-        "🔔 Подписка - настроить рассылку\n\n"
-        "✅ Подписаться - включить рассылку\n"
-        "❌ Отписаться - отключить рассылку\n"
-        "⏰ Выбрать время - установить удобное время\n"
+        "🔔 Подписка - настроить ежедневную рассылку\n\n"
         "📊 Статус подписки - проверить настройки"
     )
     await message.answer(help_text, parse_mode="Markdown", reply_markup=get_main_keyboard())
 
 @dp.message(F.text == "ℹ️ О боте")
 async def about_bot(message: Message):
-    about = "ℹ️ *О БОТЕ*\n\n📦 Версия: 2.2\n👨‍💻 Разработчик: Ваше имя\n🌐 Источник: OpenWeatherMap\n\n🚗 *Для кого:*\nДля водителей, таксистов, дальнобойщиков\n\n✨ *Особенности:*\n• Умные советы по погоде\n• Ежедневная рассылка\n• Удобные кнопки"
+    about = (
+        "ℹ️ *О БОТЕ*\n\n"
+        "📦 Версия: 3.0\n"
+        "👨‍💻 Для водителей, таксистов, дальнобойщиков\n"
+        "🌐 Источник: OpenWeatherMap\n\n"
+        "✨ *Функции:*\n"
+        "• Текущая погода\n"
+        "• Прогноз на 5 дней\n"
+        "• Умные советы по погоде\n"
+        "• Ежедневная рассылка\n"
+        "• Удобные кнопки\n\n"
+        "💡 *Совет:* Установите свой город для удобства!"
+    )
     await message.answer(about, parse_mode="Markdown", reply_markup=get_back_keyboard())
 
 @dp.message(F.text == "⬅️ Назад в меню")
@@ -254,7 +433,6 @@ async def refresh_weather(message: Message):
 async def another_city(message: Message):
     await message.answer("🌆 *Выберите город* из списка или напишите его название:", parse_mode="Markdown", reply_markup=get_cities_keyboard())
 
-@dp.message(F.text == "🔔 Подписаться на рассылку")
 @dp.message(F.text == "✅ Подписаться")
 async def handle_subscribe(message: Message):
     global CHAT_ID
@@ -305,6 +483,8 @@ async def handle_city_button(message: Message):
 async def handle_text(message: Message):
     text = message.text.strip()
     chat_id = message.chat.id
+    
+    # Проверка на ввод времени
     if len(text) == 5 and text[2] == ':':
         try:
             hours = int(text[:2])
@@ -315,22 +495,45 @@ async def handle_text(message: Message):
                 return
         except:
             pass
+    
+    # Поиск города
+    await message.answer("🔍 *Ищу город...*", parse_mode="Markdown")
     weather = get_weather(text)
     if weather['success']:
         user_cities[chat_id] = text
-        await message.answer(format_weather_message(weather), parse_mode="Markdown", reply_markup=get_weather_keyboard())
+        
+        # Предлагаем показать текущую погоду или прогноз
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="🌤 Погода сейчас"), KeyboardButton(text="📅 Прогноз на 5 дней")],
+                [KeyboardButton(text="⬅️ Главное меню")]
+            ],
+            resize_keyboard=True
+        )
+        await message.answer(
+            f"✅ Город *{text}* установлен!\n\nЧто хотите узнать?",
+            parse_mode="Markdown",
+            reply_markup=keyboard
+        )
     else:
         await message.answer(f"❌ Город '{text}' не найден.\nПроверьте название или выберите из списка:", reply_markup=get_cities_keyboard())
 
 # ==================== ПЛАНИРОВЩИК ====================
 
 def send_daily_weather():
+    """Отправка ежедневного прогноза"""
     if not CHAT_ID:
         return
     chat_id = int(CHAT_ID)
     city = user_cities.get(chat_id, "Москва")
-    weather = get_weather(city)
-    asyncio.create_task(bot.send_message(chat_id=chat_id, text=format_weather_message(weather), parse_mode="Markdown"))
+    
+    # Отправляем прогноз на 5 дней
+    forecast = get_5day_forecast(city)
+    asyncio.create_task(bot.send_message(
+        chat_id=chat_id, 
+        text=format_forecast_message(forecast), 
+        parse_mode="Markdown"
+    ))
 
 def run_schedule():
     while True:
@@ -340,13 +543,23 @@ def run_schedule():
 # ==================== ЗАПУСК ====================
 
 async def main():
+    # Настройка расписания
     schedule.every().day.at("08:00").do(send_daily_weather)
+    
+    # Запуск планировщика в отдельном потоке
     threading.Thread(target=run_schedule, daemon=True).start()
+    
     print("\n" + "="*60)
     print("✅ БОТ УСПЕШНО ЗАПУЩЕН!")
     print("="*60)
+    print("📅 Доступные функции:")
+    print("  • Текущая погода")
+    print("  • Прогноз на 5 дней")
+    print("  • Советы водителю")
+    print("  • Ежедневная рассылка")
+    print("="*60 + "\n")
+    
     await dp.start_polling(bot)
 
-# Только одна точка входа
 if __name__ == "__main__":
     asyncio.run(main())
