@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
-import aiohttp
+import requests
 import schedule
 
-# Загружаем .env
-load_dotenv()
+asyncio.set_event_loop_policy(asyncio.DefaultEventLoopPolicy())
 
+load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 CHAT_ID = os.getenv('CHAT_ID')
@@ -25,7 +25,7 @@ user_cities = {}
 user_subscription_time = {}
 logging.basicConfig(level=logging.INFO)
 
-# Словарь перевода дней недели
+# ----- ПЕРЕВОД ДНЕЙ НА РУССКИЙ -----
 DAYS_RU = {
     'Monday': 'Понедельник',
     'Tuesday': 'Вторник',
@@ -37,10 +37,10 @@ DAYS_RU = {
 }
 
 def get_russian_day(date: datetime) -> str:
-    eng_day = date.strftime('%A')
-    return DAYS_RU.get(eng_day, eng_day)
+    eng = date.strftime('%A')
+    return DAYS_RU.get(eng, eng)
 
-# ==================== КЛАВИАТУРЫ ====================
+# ----- КЛАВИАТУРЫ -----
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -89,48 +89,42 @@ def get_back_keyboard():
         resize_keyboard=True
     )
 
-# ==================== АСИНХРОННЫЕ ЗАПРОСЫ ПОГОДЫ ====================
-async def fetch_json(session, url):
-    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
-        return await response.json()
-
-async def get_weather_async(city: str) -> dict:
+# ----- ФУНКЦИИ ПОГОДЫ (синхронные, как в рабочей версии) -----
+def get_weather(city: str) -> dict:
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-        async with aiohttp.ClientSession() as session:
-            data = await fetch_json(session, url)
-            if 'main' in data:
-                temp = data['main']['temp']
-                feels = data['main']['feels_like']
-                humidity = data['main']['humidity']
-                pressure = data['main']['pressure'] * 0.750062
-                wind = data['wind']['speed']
-                wdir = data['wind'].get('deg', 0)
-                desc = data['weather'][0]['description']
-                clouds = data['clouds']['all']
-                vis = data.get('visibility', 10000) / 1000
-                directions = ['северный','северо-восточный','восточный','юго-восточный',
-                              'южный','юго-западный','западный','северо-западный']
-                wind_dir = directions[int((wdir + 22.5) / 45) % 8]
-                return {
-                    'success': True, 'city': city, 'temp': temp, 'feels_like': feels,
-                    'humidity': humidity, 'pressure': pressure, 'wind_speed': wind,
-                    'wind_dir': wind_dir, 'description': desc, 'clouds': clouds,
-                    'visibility': vis, 'time': datetime.now().strftime('%d.%m.%Y %H:%M')
-                }
-            else:
-                return {'success': False, 'error': 'Город не найден'}
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if response.status_code == 200:
+            temp = data['main']['temp']
+            feels_like = data['main']['feels_like']
+            humidity = data['main']['humidity']
+            pressure = data['main']['pressure'] * 0.750062
+            wind_speed = data['wind']['speed']
+            wind_direction = data['wind'].get('deg', 0)
+            weather_desc = data['weather'][0]['description']
+            clouds = data['clouds']['all']
+            visibility = data.get('visibility', 10000) / 1000
+            directions = ['северный','северо-восточный','восточный','юго-восточный',
+                          'южный','юго-западный','западный','северо-западный']
+            wind_dir = directions[int((wind_direction + 22.5) / 45) % 8]
+            return {
+                'success': True, 'city': city, 'temp': temp, 'feels_like': feels_like,
+                'humidity': humidity, 'pressure': pressure, 'wind_speed': wind_speed,
+                'wind_dir': wind_dir, 'description': weather_desc, 'clouds': clouds,
+                'visibility': visibility, 'time': datetime.now().strftime('%d.%m.%Y %H:%M')
+            }
+        else:
+            return {'success': False, 'error': 'Город не найден'}
     except Exception as e:
         return {'success': False, 'error': f'Ошибка: {e}'}
 
-async def get_5day_forecast_async(city: str) -> dict:
+def get_5day_forecast(city: str) -> dict:
     try:
         url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-        async with aiohttp.ClientSession() as session:
-            data = await fetch_json(session, url)
-            if 'list' not in data:
-                return {'success': False, 'error': 'Город не найден'}
-            
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        if response.status_code == 200:
             daily = {}
             for item in data['list']:
                 dt = datetime.fromtimestamp(item['dt'])
@@ -148,7 +142,6 @@ async def get_5day_forecast_async(city: str) -> dict:
                     daily[key]['rain'] = True
                 if 'snow' in item and item['snow'].get('3h', 0) > 0:
                     daily[key]['snow'] = True
-            
             forecasts = []
             for key, day in list(daily.items())[:5]:
                 forecasts.append({
@@ -163,6 +156,8 @@ async def get_5day_forecast_async(city: str) -> dict:
                     'snow': day['snow']
                 })
             return {'success': True, 'city': city, 'forecasts': forecasts}
+        else:
+            return {'success': False, 'error': 'Город не найден'}
     except Exception as e:
         return {'success': False, 'error': f'Ошибка: {e}'}
 
@@ -219,7 +214,7 @@ def format_forecast_message(forecast_data: dict) -> str:
         msg += f"🚗 *Советы:* {tips}\n\n─"*20 + "\n\n"
     return msg
 
-# ==================== ОБРАБОТЧИКИ ====================
+# ----- ОБРАБОТЧИКИ -----
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
@@ -232,8 +227,7 @@ async def cmd_start(message: Message):
 async def weather_now(message: Message):
     cid = message.chat.id
     if cid in user_cities:
-        await message.answer("🔍 Получаю погоду...", parse_mode="Markdown")
-        w = await get_weather_async(user_cities[cid])
+        w = get_weather(user_cities[cid])
         await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
     else:
         await message.answer("🌆 Выберите город из списка или напишите его название.", parse_mode="Markdown", reply_markup=get_cities_keyboard())
@@ -242,12 +236,9 @@ async def weather_now(message: Message):
 async def forecast_5days(message: Message):
     cid = message.chat.id
     if cid in user_cities:
-        await message.answer("🔍 Получаю прогноз на 5 дней... ⏳", parse_mode="Markdown")
-        try:
-            f = await get_5day_forecast_async(user_cities[cid])
-            await message.answer(format_forecast_message(f), parse_mode="Markdown", reply_markup=get_weather_keyboard())
-        except Exception as e:
-            await message.answer(f"❌ Ошибка при получении прогноза: {e}", reply_markup=get_weather_keyboard())
+        await message.answer("🔍 Получаю прогноз...", parse_mode="Markdown")
+        f = get_5day_forecast(user_cities[cid])
+        await message.answer(format_forecast_message(f), parse_mode="Markdown", reply_markup=get_weather_keyboard())
     else:
         await message.answer("🌆 Сначала установите город!", reply_markup=get_cities_keyboard())
 
@@ -287,7 +278,7 @@ async def help_menu(message: Message):
 @dp.message(F.text == "ℹ️ О боте")
 async def about_bot(message: Message):
     await message.answer(
-        "ℹ️ *О боте*\nВерсия 3.2\nДля водителей\nИсточник: OpenWeatherMap\nСоветы по погоде\nАсинхронные запросы",
+        "ℹ️ *О боте*\nВерсия 3.0\nДля водителей\nИсточник: OpenWeatherMap\nСоветы по погоде",
         parse_mode="Markdown", reply_markup=get_back_keyboard()
     )
 
@@ -300,8 +291,7 @@ async def back_to_main_menu(message: Message):
 async def refresh_weather(message: Message):
     cid = message.chat.id
     if cid in user_cities:
-        await message.answer("🔍 Обновляю погоду...", parse_mode="Markdown")
-        w = await get_weather_async(user_cities[cid])
+        w = get_weather(user_cities[cid])
         await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
     else:
         await message.answer("⚠️ Сначала установите город!", reply_markup=get_cities_keyboard())
@@ -349,8 +339,7 @@ async def subscription_status(message: Message):
 async def handle_city_button(message: Message):
     city = message.text.replace("🇷🇺 ", "").strip()
     cid = message.chat.id
-    await message.answer("🔍 Получаю погоду...", parse_mode="Markdown")
-    w = await get_weather_async(city)
+    w = get_weather(city)
     if w['success']:
         user_cities[cid] = city
         await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
@@ -361,7 +350,6 @@ async def handle_city_button(message: Message):
 async def handle_text(message: Message):
     text = message.text.strip()
     cid = message.chat.id
-    # Проверка времени
     if len(text) == 5 and text[2] == ':':
         try:
             h, m = int(text[:2]), int(text[3:])
@@ -371,9 +359,7 @@ async def handle_text(message: Message):
                 return
         except:
             pass
-    # Город
-    await message.answer("🔍 Ищу город...", parse_mode="Markdown")
-    w = await get_weather_async(text)
+    w = get_weather(text)
     if w['success']:
         user_cities[cid] = text
         kb = ReplyKeyboardMarkup(
@@ -385,39 +371,28 @@ async def handle_text(message: Message):
     else:
         await message.answer(f"❌ Город '{text}' не найден.", reply_markup=get_cities_keyboard())
 
-# ==================== ПЛАНИРОВЩИК ====================
-loop = None
-
+# ----- ПЛАНИРОВЩИК (рабочий) -----
 def send_daily_weather():
     if not CHAT_ID:
         return
-    try:
-        cid = int(CHAT_ID)
-        city = user_cities.get(cid, "Москва")
-        # Используем asyncio.run_coroutine_threadsafe для вызова асинхронной функции
-        future = asyncio.run_coroutine_threadsafe(get_5day_forecast_async(city), loop)
-        forecast = future.result(timeout=30)  # ждём результат до 30 сек
-        text = format_forecast_message(forecast)
-        asyncio.run_coroutine_threadsafe(bot.send_message(chat_id=cid, text=text, parse_mode="Markdown"), loop)
-    except Exception as e:
-        logging.error(f"Ошибка в send_daily_weather: {e}")
+    cid = int(CHAT_ID)
+    city = user_cities.get(cid, "Москва")
+    forecast = get_5day_forecast(city)
+    asyncio.create_task(bot.send_message(chat_id=cid, text=format_forecast_message(forecast), parse_mode="Markdown"))
 
 def run_schedule():
     while True:
         schedule.run_pending()
         time.sleep(30)
 
-# ==================== ЗАПУСК ====================
 async def main():
-    global loop
-    loop = asyncio.get_running_loop()
     schedule.every().day.at("08:00").do(send_daily_weather)
     threading.Thread(target=run_schedule, daemon=True).start()
     print("\n" + "="*60)
     print("✅ БОТ УСПЕШНО ЗАПУЩЕН!")
     print("="*60)
     print("📅 Функции: текущая погода, прогноз на 5 дней, советы, подписка")
-    print("💡 Используются асинхронные запросы — бот не зависает")
+    print("🌐 Язык дней недели: РУССКИЙ")
     print("="*60 + "\n")
     await dp.start_polling(bot)
 
