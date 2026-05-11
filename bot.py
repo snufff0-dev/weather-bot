@@ -122,7 +122,7 @@ def get_weather(city: str) -> dict:
 def get_5day_forecast(city: str) -> dict:
     try:
         url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=15)
         data = response.json()
         if response.status_code == 200:
             daily = {}
