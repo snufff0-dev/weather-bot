@@ -373,11 +373,10 @@ async def handle_text(message: Message):
     else:
         await message.answer(f"❌ Город '{text}' не найден.", reply_markup=get_cities_keyboard())
 
-# ==================== ПЛАНИРОВЩИК (ИСПРАВЛЕННЫЙ) ====================
-loop = None  # будет установлен в main
+# ==================== ПЛАНИРОВЩИК ====================
+loop = None
 
 def send_daily_weather():
-    """Вызывается из потока schedule — отправляем сообщение через основной цикл"""
     if not CHAT_ID:
         return
     try:
@@ -385,7 +384,6 @@ def send_daily_weather():
         city = user_cities.get(cid, "Москва")
         forecast = get_5day_forecast(city)
         text = format_forecast_message(forecast)
-        # Отправляем в главном асинхронном цикле
         asyncio.run_coroutine_threadsafe(bot.send_message(chat_id=cid, text=text, parse_mode="Markdown"), loop)
     except Exception as e:
         logging.error(f"Ошибка в send_daily_weather: {e}")
@@ -398,17 +396,14 @@ def run_schedule():
 # ==================== ЗАПУСК ====================
 async def main():
     global loop
-    loop = asyncio.get_running_loop()  # сохраняем цикл
-
+    loop = asyncio.get_running_loop()
     schedule.every().day.at("08:00").do(send_daily_weather)
     threading.Thread(target=run_schedule, daemon=True).start()
-
     print("\n" + "="*60)
     print("✅ БОТ УСПЕШНО ЗАПУЩЕН!")
     print("="*60)
     print("📅 Функции: текущая погода, прогноз на 5 дней, советы, подписка")
     print("="*60 + "\n")
-
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
