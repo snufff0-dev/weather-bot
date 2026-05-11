@@ -1,4 +1,3 @@
-python
 import os
 import logging
 import asyncio
@@ -28,7 +27,7 @@ user_cities = {}
 user_subscription_time = {}
 logging.basicConfig(level=logging.INFO)
 
-# Словарь для перевода дней недели на русский
+# Прямое соответствие английских дней русским (гарантированный перевод)
 DAYS_RU = {
     'Monday': 'Понедельник',
     'Tuesday': 'Вторник',
@@ -38,6 +37,13 @@ DAYS_RU = {
     'Saturday': 'Суббота',
     'Sunday': 'Воскресенье'
 }
+
+# Также сопоставим для случаев, если strftime вдруг вернёт русские названия (но обычно нет)
+# Эта функция гарантирует русское название в любом случае
+def get_russian_day(date: datetime) -> str:
+    """Возвращает название дня недели на русском языке"""
+    eng_day = date.strftime('%A')
+    return DAYS_RU.get(eng_day, eng_day)  # если вдруг не найдёт, вернёт как есть
 
 # ==================== КЛАВИАТУРЫ ====================
 
@@ -245,7 +251,7 @@ def get_driver_tips_for_weather(temp: float, wind_speed: float, humidity: float,
     if not tips:
         tips.append("✅ Погода благоприятная, хорошей дороги!")
     
-    return "\n".join(tips[:4])  # Ограничиваем 4 советами
+    return "\n".join(tips[:4])
 
 def format_forecast_message(forecast_data: dict) -> str:
     """Форматирование прогноза на 5 дней с русскими названиями дней"""
@@ -255,23 +261,24 @@ def format_forecast_message(forecast_data: dict) -> str:
     message = f"📅 *ПРОГНОЗ НА 5 ДНЕЙ - {forecast_data['city'].upper()}*\n"
     message += "━" * 30 + "\n\n"
     
+    # Получаем текущую дату для определения "сегодня", "завтра"
+    today = datetime.now().date()
+    
     for i, day in enumerate(forecast_data['forecasts']):
-        # Получаем название дня на русском
-        eng_day = day['date'].strftime('%A')
-        day_name = DAYS_RU.get(eng_day, eng_day)
+        day_date = day['date'].date()
         
-        if i == 0:
-            day_name = "Сегодня"
-        elif i == 1:
-            day_name = "Завтра"
+        # Определяем заголовок
+        if day_date == today:
+            day_header = "Сегодня"
+        elif day_date == today + timedelta(days=1):
+            # Для завтрашнего дня добавим день недели в скобках
+            weekday_ru = get_russian_day(day['date'])
+            day_header = f"Завтра ({weekday_ru})"
+        else:
+            # Для остальных дней просто день недели
+            day_header = get_russian_day(day['date'])
         
-        # Добавляем день недели в скобках для завтрашнего дня
-        if i == 1:
-            day_name += f" ({DAYS_RU.get(eng_day, eng_day)})"
-        elif i > 1:
-            day_name = DAYS_RU.get(eng_day, eng_day)
-        
-        message += f"📌 *{day_name}* {day['date'].strftime('%d.%m')}\n"
+        message += f"📌 *{day_header}* {day_date.strftime('%d.%m')}\n"
         message += f"🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C (средняя {day['temp_day']:.0f}°C)\n"
         message += f"☁️ {day['description'].capitalize()}\n"
         message += f"💨 Ветер до {day['wind_speed']:.0f} м/с\n"
@@ -282,7 +289,7 @@ def format_forecast_message(forecast_data: dict) -> str:
         if day['snow']:
             message += "🌨️ Ожидается снег\n"
         
-        # Советы водителю для этого дня
+        # Советы водителю
         tips = get_driver_tips_for_weather(
             day['temp_day'], day['wind_speed'], day['humidity'],
             day['description'], day['rain'], day['snow']
@@ -310,7 +317,6 @@ def format_weather_message(weather: dict) -> str:
         f"🚗 *СОВЕТЫ ВОДИТЕЛЮ:*\n"
     )
     
-    # Советы для текущей погоды
     tips = get_driver_tips_for_weather(
         weather['temp'], weather['wind_speed'], weather['humidity'],
         weather['description'], 'дождь' in weather['description'], 
@@ -422,7 +428,7 @@ async def help_menu(message: Message):
 async def about_bot(message: Message):
     about = (
         "ℹ️ *О БОТЕ*\n\n"
-        "📦 Версия: 3.0\n"
+        "📦 Версия: 3.1\n"
         "👨‍💻 Для водителей, таксистов, дальнобойщиков\n"
         "🌐 Источник: OpenWeatherMap\n\n"
         "✨ *Функции:*\n"
@@ -523,7 +529,6 @@ async def handle_text(message: Message):
     if weather['success']:
         user_cities[chat_id] = text
         
-        # Предлагаем показать текущую погоду или прогноз
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text="🌤 Погода сейчас"), KeyboardButton(text="📅 Прогноз на 5 дней")],
@@ -548,7 +553,6 @@ def send_daily_weather():
     chat_id = int(CHAT_ID)
     city = user_cities.get(chat_id, "Москва")
     
-    # Отправляем прогноз на 5 дней
     forecast = get_5day_forecast(city)
     asyncio.create_task(bot.send_message(
         chat_id=chat_id, 
@@ -564,10 +568,7 @@ def run_schedule():
 # ==================== ЗАПУСК ====================
 
 async def main():
-    # Настройка расписания
     schedule.every().day.at("08:00").do(send_daily_weather)
-    
-    # Запуск планировщика в отдельном потоке
     threading.Thread(target=run_schedule, daemon=True).start()
     
     print("\n" + "="*60)
@@ -575,7 +576,7 @@ async def main():
     print("="*60)
     print("📅 Доступные функции:")
     print("  • Текущая погода")
-    print("  • Прогноз на 5 дней")
+    print("  • Прогноз на 5 дней (русские дни недели)")
     print("  • Советы водителю")
     print("  • Ежедневная рассылка")
     print("="*60 + "\n")
