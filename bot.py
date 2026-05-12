@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import requests
 import schedule
 
@@ -17,15 +17,15 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 CHAT_ID = os.getenv('CHAT_ID')
-ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))  # ваш Telegram ID (число) – укажите в .env
+ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "2.0"  # увеличивайте при каждом релизе
+BOT_VERSION = "2.1"          # увеличивайте при каждом релизе
 USERS_FILE = "users.json"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# Загружаем пользователей из файла
+# ---------- ЗАГРУЗКА/СОХРАНЕНИЕ ПОЛЬЗОВАТЕЛЕЙ ----------
 def load_users():
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r', encoding='utf-8') as f:
@@ -42,14 +42,16 @@ def save_users(user_cities, user_subscription_time):
         }, f, ensure_ascii=False, indent=2)
 
 user_cities, user_subscription_time, saved_version = load_users()
-user_car_data = {}  # временные данные не сохраняем
+user_car_data = {}          # временные данные для оценки авто
+car_list = []               # список моделей для пагинации
+car_page = {}               # текущая страница для каждого пользователя
 
-# Если версия изменилась – рассылаем уведомление
 async def notify_update():
     if saved_version != BOT_VERSION:
-        for user_id in user_cities.keys():
+        for uid in user_cities.keys():
             try:
-                await bot.send_message(int(user_id), "🔔 *Мы обновились!* Для корректной работы пожалуйста перезапустите бота командой /start", parse_mode="Markdown")
+                await bot.send_message(int(uid), "🔔 *Бот обновился!* Пожалуйста, отправьте команду /start для корректной работы.", parse_mode="Markdown")
+                await asyncio.sleep(0.05)
             except:
                 pass
         save_users(user_cities, user_subscription_time)
@@ -77,7 +79,7 @@ def city_to_latin(name: str) -> str:
              'щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'}
     return ''.join(trans.get(ch, ch) for ch in low).title()
 
-# ---------- РАСШИРЕННАЯ БАЗА АВТО (как утром) ----------
+# ---------- БОЛЬШАЯ БАЗА АВТОМОБИЛЕЙ (35+ моделей) ----------
 CARS_DB = {
     'Lada Vesta': {'price_new': 1200000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 7.5},
     'Lada Granta': {'price_new': 800000, 'reliability': 65, 'parts_cost': 'низкая', 'fuel': 7.0},
@@ -114,7 +116,28 @@ CARS_DB = {
     'Chevrolet Cruze': {'price_new': 900000, 'reliability': 68, 'parts_cost': 'средняя', 'fuel': 8.5},
 }
 
-# ---------- ПОГОДНЫЕ ФУНКЦИИ (как в предыдущем коде) ----------
+# Список моделей для отображения (отсортированный)
+CAR_MODELS = sorted(CARS_DB.keys())
+ITEMS_PER_PAGE = 6
+
+def get_car_keyboard(page: int) -> InlineKeyboardMarkup:
+    start = page * ITEMS_PER_PAGE
+    end = start + ITEMS_PER_PAGE
+    models_on_page = CAR_MODELS[start:end]
+    buttons = []
+    for model in models_on_page:
+        buttons.append([InlineKeyboardButton(text=model, callback_data=f"car_{model}")])
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton(text="⬅️ Назад", callback_data=f"car_page_{page-1}"))
+    if end < len(CAR_MODELS):
+        nav_buttons.append(InlineKeyboardButton(text="➡️ Далее", callback_data=f"car_page_{page+1}"))
+    if nav_buttons:
+        buttons.append(nav_buttons)
+    buttons.append([InlineKeyboardButton(text="❌ Отмена", callback_data="car_cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# ---------- ФУНКЦИИ ПОГОДЫ ----------
 def get_weather(city: str):
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
@@ -215,7 +238,7 @@ def format_forecast(f):
         msg += f"🚗 *Совет:* {driver_tips(day['t_avg'], day['wind'], day['desc'], day['rain'])}\n"
     return msg
 
-# ---------- ОЦЕНКА АВТО (подробная) ----------
+# ---------- ОЦЕНКА АВТОМОБИЛЯ ----------
 def calculate_car_value(model: str, year: int, km: int) -> dict:
     current_year = datetime.now().year
     age = current_year - year
@@ -316,14 +339,6 @@ def sub_kb():
 def back_kb():
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 
-def car_model_kb():
-    return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="Toyota Vitz"), KeyboardButton(text="Toyota Corolla"), KeyboardButton(text="Toyota Camry")],
-        [KeyboardButton(text="KIA Rio"), KeyboardButton(text="Hyundai Solaris"), KeyboardButton(text="Lada Granta")],
-        [KeyboardButton(text="Volkswagen Polo"), KeyboardButton(text="Renault Logan"), KeyboardButton(text="Chery Tiggo T11")],
-        [KeyboardButton(text="⬅️ Назад")]
-    ], resize_keyboard=True)
-
 # ---------- ОБРАБОТЧИКИ ----------
 @dp.message(Command("start"))
 async def start_cmd(msg: Message):
@@ -336,25 +351,24 @@ async def start_cmd(msg: Message):
         parse_mode="Markdown", reply_markup=main_kb()
     )
 
-# Команда для администратора /broadcast
 @dp.message(Command("broadcast"))
 async def broadcast_cmd(msg: Message):
     if msg.from_user.id != ADMIN_ID:
-        await msg.answer("⛔ У вас нет прав для этой команды.")
+        await msg.answer("⛔ Нет прав.")
         return
     text = msg.text.replace("/broadcast", "").strip()
     if not text:
-        await msg.answer("Формат: /broadcast <текст для рассылки>")
+        await msg.answer("Формат: /broadcast <текст>")
         return
     count = 0
-    for user_id in user_cities.keys():
+    for uid in user_cities.keys():
         try:
-            await bot.send_message(int(user_id), text, parse_mode="Markdown")
+            await bot.send_message(int(uid), text, parse_mode="Markdown")
             count += 1
-            await asyncio.sleep(0.05)  # чтобы не превысить лимиты
+            await asyncio.sleep(0.05)
         except:
             pass
-    await msg.answer(f"✅ Сообщение отправлено {count} пользователям.")
+    await msg.answer(f"✅ Отправлено {count} пользователям.")
 
 # ---------- ПОГОДА ----------
 @dp.message(F.text == "🌤 Погода сейчас")
@@ -370,12 +384,12 @@ async def weather_now(msg: Message):
 async def forecast_5(msg: Message):
     cid = msg.chat.id
     if cid not in user_cities:
-        await msg.answer("🌆 Сначала напишите название вашего города (например, *Москва*, *Омск*, *Omsk*).", parse_mode="Markdown")
+        await msg.answer("🌆 Сначала напишите название вашего города.", parse_mode="Markdown")
         return
     f = await asyncio.to_thread(get_5day_forecast, user_cities[cid])
     await msg.answer(format_forecast(f), parse_mode="Markdown", reply_markup=main_kb())
 
-# ---------- ПОМОЩЬ ПРИ ПОКУПКЕ ----------
+# ---------- ПОМОЩЬ ПРИ ПОКУПКЕ (пагинация) ----------
 @dp.message(F.text == "🛠 Помощь при покупке авто")
 async def eval_start(msg: Message):
     user_car_data[msg.chat.id] = {}
@@ -385,10 +399,42 @@ async def eval_start(msg: Message):
         parse_mode="Markdown", reply_markup=back_kb()
     )
 
+# Пагинация через инлайн-кнопки
+@dp.callback_query(lambda c: c.data.startswith(("car_page_", "car_", "car_cancel")))
+async def car_navigation(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    data = callback.data
+
+    if data == "car_cancel":
+        await callback.message.edit_text("❌ Выбор модели отменён.")
+        await callback.answer()
+        if user_id in user_car_data:
+            del user_car_data[user_id]
+        return
+
+    if data.startswith("car_page_"):
+        page = int(data.split("_")[2])
+        await callback.message.edit_reply_markup(reply_markup=get_car_keyboard(page))
+        await callback.answer()
+        return
+
+    if data.startswith("car_"):
+        model = data[4:]
+        if user_id in user_car_data and 'year' in user_car_data[user_id] and 'km' in user_car_data[user_id]:
+            eval_data = calculate_car_value(model, user_car_data[user_id]['year'], user_car_data[user_id]['km'])
+            await callback.message.edit_text(format_car_evaluation(eval_data), parse_mode="Markdown")
+            del user_car_data[user_id]
+            await callback.answer()
+            # после оценки показать главное меню
+            await callback.message.answer("Главное меню:", reply_markup=main_kb())
+        else:
+            await callback.answer("Ошибка: сначала введите год и пробег.", show_alert=True)
+        return
+
 # ---------- ПОДПИСКА ----------
 @dp.message(F.text == "🔔 Подписка")
 async def sub_menu(msg: Message):
-    await msg.answer("Настройка ежедневной рассылки прогноза:", reply_markup=sub_kb())
+    await msg.answer("Настройка ежедневной рассылки:", reply_markup=sub_kb())
 
 @dp.message(F.text == "✅ Подписаться")
 async def subscribe(msg: Message):
@@ -398,7 +444,7 @@ async def subscribe(msg: Message):
         await msg.answer("Сначала установите город, написав его название.", reply_markup=main_kb())
         return
     CHAT_ID = str(cid)
-    save_users(user_cities, user_subscription_time)  # сохраняем
+    save_users(user_cities, user_subscription_time)
     await msg.answer("✅ Вы подписаны на ежедневный прогноз в 08:00", reply_markup=main_kb())
 
 @dp.message(F.text == "❌ Отписаться")
@@ -407,7 +453,7 @@ async def unsubscribe(msg: Message):
     cid = msg.chat.id
     if CHAT_ID and int(CHAT_ID) == cid:
         CHAT_ID = None
-        await msg.answer("❌ Вы отписались от рассылки", reply_markup=main_kb())
+        await msg.answer("❌ Вы отписались", reply_markup=main_kb())
     else:
         await msg.answer("❌ Вы не были подписаны", reply_markup=main_kb())
 
@@ -434,7 +480,7 @@ async def help_msg(msg: Message):
         "📅 Прогноз на 5 дней – подробный прогноз\n"
         "🛠 Помощь при покупке авто – оценка стоимости и проверки\n"
         "🔔 Подписка – ежедневная рассылка\n\n"
-        "❗️ Чтобы получать погоду, сначала напишите название города (Москва, Омск, Omsk).",
+        "❗️ Чтобы получить погоду, сначала напишите название города (Москва, Омск, Omsk).",
         parse_mode="Markdown", reply_markup=main_kb()
     )
 
@@ -443,13 +489,13 @@ async def back(msg: Message):
     user_car_data.pop(msg.chat.id, None)
     await msg.answer("Главное меню", reply_markup=main_kb())
 
-# ---------- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (оценка авто, время, город) ----------
+# ---------- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (год, пробег, город, время) ----------
 @dp.message()
 async def handle_text(msg: Message):
     cid = msg.chat.id
     text = msg.text.strip()
 
-    # Режим оценки авто
+    # Режим оценки авто – ввод года и пробега
     if cid in user_car_data:
         data = user_car_data[cid]
         if 'year' not in data:
@@ -465,32 +511,15 @@ async def handle_text(msg: Message):
                 km = int(text)
                 if 0 <= km <= 800:
                     data['km'] = km * 1000
-                    await msg.answer("Шаг 3: Выберите модель автомобиля (или напишите её название):", reply_markup=car_model_kb())
+                    # Показать пагинацию со списком моделей
+                    await msg.answer("Шаг 3: Выберите модель автомобиля:", reply_markup=get_car_keyboard(0))
                 else:
                     await msg.answer("❌ Пробег должен быть от 0 до 800 тыс. км")
             except ValueError:
                 await msg.answer("❌ Введите пробег цифрами (например, 110)")
             return
-
-        if 'model' not in data:
-            # Поиск модели
-            if text in CARS_DB:
-                model = text
-                eval_data = calculate_car_value(model, data['year'], data['km'])
-                await msg.answer(format_car_evaluation(eval_data), parse_mode="Markdown", reply_markup=main_kb())
-                del user_car_data[cid]
-            elif text == "⬅️ Назад":
-                del user_car_data[cid]
-                await msg.answer("Оценка отменена. Главное меню", reply_markup=main_kb())
-            else:
-                found = next((car for car in CARS_DB if text.lower() in car.lower()), None)
-                if found:
-                    eval_data = calculate_car_value(found, data['year'], data['km'])
-                    await msg.answer(format_car_evaluation(eval_data), parse_mode="Markdown", reply_markup=main_kb())
-                    del user_car_data[cid]
-                else:
-                    await msg.answer("❌ Модель не найдена. Выберите из списка или уточните название.", reply_markup=car_model_kb())
-            return
+        # Если модель уже выбрана через колбэк, здесь ничего не делаем
+        return
 
     # Установка времени подписки
     if len(text) == 5 and text[2] == ':' and text[:2].isdigit() and text[3:].isdigit():
@@ -503,7 +532,7 @@ async def handle_text(msg: Message):
             await msg.answer("❌ Неверный формат времени")
         return
 
-    # Город (установка)
+    # Установка города
     city_lat = city_to_latin(text)
     w = await asyncio.to_thread(get_weather, city_lat)
     if w['ok']:
@@ -519,7 +548,7 @@ async def handle_text(msg: Message):
             reply_markup=main_kb()
         )
 
-# ---------- ЕЖЕДНЕВНАЯ РАССЫЛКА ----------
+# ---------- РАССЫЛКА ----------
 def send_daily():
     if not CHAT_ID:
         return
@@ -537,9 +566,9 @@ def schedule_loop():
 
 # ---------- ЗАПУСК ----------
 async def main():
-    await notify_update()  # рассылка при смене версии
+    await notify_update()
     threading.Thread(target=schedule_loop, daemon=True).start()
-    print("✅ БОТ ЗАПУЩЕН. Версия", BOT_VERSION)
+    print(f"✅ Бот запущен. Версия {BOT_VERSION}. Моделей: {len(CAR_MODELS)}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
