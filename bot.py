@@ -20,7 +20,7 @@ WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 CHAT_ID = os.getenv('CHAT_ID')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "2.2"
+BOT_VERSION = "2.3"
 
 # Папка общего хранилища Bothost
 SHARED_DIR = "/app/shared"
