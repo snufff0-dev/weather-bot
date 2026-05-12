@@ -12,6 +12,7 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, InlineKe
 import requests
 import schedule
 
+
 load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -20,7 +21,11 @@ CHAT_ID = os.getenv('CHAT_ID')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
 BOT_VERSION = "2.2"
-USERS_FILE = "users.json"
+
+# Папка общего хранилища Bothost
+SHARED_DIR = "/app/shared"
+os.makedirs(SHARED_DIR, exist_ok=True)
+USERS_FILE = os.path.join(SHARED_DIR, "users.json")   # ← УБЕРИТЕ второе присвоение ниже
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
