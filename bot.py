@@ -27,7 +27,7 @@ user_car_data = {}
 logging.basicConfig(level=logging.INFO)
 
 # --------------------------------------------------------------
-# ПРЕОБРАЗОВАНИЕ РУССКИХ НАЗВАНИЙ ГОРОДОВ В ЛАТИНИЦУ
+# ПРЕОБРАЗОВАНИЕ ГОРОДОВ
 # --------------------------------------------------------------
 RUS_TO_LAT = {
     'москва': 'Moscow', 'санкт-петербург': 'Saint Petersburg',
@@ -41,14 +41,12 @@ RUS_TO_LAT = {
 }
 
 def city_to_latin(city_name: str) -> str:
-    """Преобразует русское название города в латиницу, удаляет флаг 🇷🇺"""
-    # Убираем флаг, если есть
     if city_name.startswith('🇷🇺 '):
         city_name = city_name[4:]
     city_lower = city_name.lower().strip()
     if city_lower in RUS_TO_LAT:
         return RUS_TO_LAT[city_lower]
-    # Простая транслитерация для других
+    # простая транслитерация
     translit = {
         'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z',
         'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
@@ -57,48 +55,29 @@ def city_to_latin(city_name: str) -> str:
     }
     result = ''
     for ch in city_lower:
-        if ch in translit:
-            result += translit[ch]
-        elif ch == ' ':
-            result += ' '
-        else:
-            result += ch
+        result += translit.get(ch, ch)
     return result.title()
 
 # --------------------------------------------------------------
-# БАЗА АВТОМОБИЛЕЙ
+# БАЗА ДАННЫХ АВТО
 # --------------------------------------------------------------
 CARS_DB = {
-    'Lada Vesta': {'price_new': 1200000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 7.5},
-    'Lada Granta': {'price_new': 800000, 'reliability': 65, 'parts_cost': 'низкая', 'fuel': 7.0},
-    'Lada Niva Travel': {'price_new': 1400000, 'reliability': 60, 'parts_cost': 'низкая', 'fuel': 9.5},
-    'УАЗ Patriot': {'price_new': 1500000, 'reliability': 55, 'parts_cost': 'средняя', 'fuel': 11.0},
-    'KIA Rio': {'price_new': 1300000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 7.3},
-    'KIA Sportage': {'price_new': 2100000, 'reliability': 84, 'parts_cost': 'средняя', 'fuel': 8.7},
-    'Hyundai Solaris': {'price_new': 1280000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 7.2},
-    'Hyundai Creta': {'price_new': 1800000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 8.5},
+    'Toyota Vitz': {'price_new': 800000, 'reliability': 92, 'parts_cost': 'средняя', 'fuel': 6.5},
     'Toyota Corolla': {'price_new': 2000000, 'reliability': 95, 'parts_cost': 'средняя', 'fuel': 7.5},
     'Toyota Camry': {'price_new': 3500000, 'reliability': 95, 'parts_cost': 'высокая', 'fuel': 8.5},
-    'Toyota RAV4': {'price_new': 2700000, 'reliability': 92, 'parts_cost': 'средняя', 'fuel': 8.0},
-    'Toyota Vitz': {'price_new': 800000, 'reliability': 92, 'parts_cost': 'средняя', 'fuel': 6.5},
-    'Nissan Qashqai': {'price_new': 2200000, 'reliability': 80, 'parts_cost': 'средняя', 'fuel': 8.0},
-    'Mazda CX-5': {'price_new': 2500000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 8.2},
+    'KIA Rio': {'price_new': 1300000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 7.3},
+    'Hyundai Solaris': {'price_new': 1280000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 7.2},
+    'Lada Vesta': {'price_new': 1200000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 7.5},
+    'Lada Granta': {'price_new': 800000, 'reliability': 65, 'parts_cost': 'низкая', 'fuel': 7.0},
     'Volkswagen Polo': {'price_new': 1350000, 'reliability': 80, 'parts_cost': 'средняя', 'fuel': 7.2},
-    'Skoda Rapid': {'price_new': 1400000, 'reliability': 80, 'parts_cost': 'средняя', 'fuel': 7.0},
-    'Renault Logan': {'price_new': 1100000, 'reliability': 75, 'parts_cost': 'низкая', 'fuel': 7.0},
-    'Renault Duster': {'price_new': 1400000, 'reliability': 74, 'parts_cost': 'низкая', 'fuel': 8.0},
     'Chery Tiggo T11': {'price_new': 800000, 'reliability': 65, 'parts_cost': 'средняя', 'fuel': 9.5},
-    'Chery Tiggo 7 Pro': {'price_new': 2300000, 'reliability': 75, 'parts_cost': 'средняя', 'fuel': 8.5},
-    'Haval Jolion': {'price_new': 2100000, 'reliability': 78, 'parts_cost': 'средняя', 'fuel': 8.3},
-    'Geely Coolray': {'price_new': 1900000, 'reliability': 76, 'parts_cost': 'средняя', 'fuel': 8.0},
+    'Nissan Qashqai': {'price_new': 2200000, 'reliability': 80, 'parts_cost': 'средняя', 'fuel': 8.0},
     'BMW 3 series': {'price_new': 3800000, 'reliability': 75, 'parts_cost': 'высокая', 'fuel': 8.5},
-    'Mercedes-Benz C-class': {'price_new': 4200000, 'reliability': 78, 'parts_cost': 'высокая', 'fuel': 8.5},
-    'Audi A4': {'price_new': 3600000, 'reliability': 76, 'parts_cost': 'высокая', 'fuel': 8.3},
     'Chevrolet Lacetti': {'price_new': 700000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 8.0},
 }
 
 # --------------------------------------------------------------
-# ФУНКЦИИ ПОГОДЫ
+# ФУНКЦИИ ПОГОДЫ (синхронные, но вызываются в потоках)
 # --------------------------------------------------------------
 def get_weather(city: str) -> dict:
     try:
@@ -114,14 +93,12 @@ def get_weather(city: str) -> dict:
                 'pressure': data['main']['pressure'] * 0.750062,
                 'wind_speed': data['wind']['speed'],
                 'description': data['weather'][0]['description'],
-                'clouds': data['clouds']['all'],
-                'visibility': data.get('visibility', 10000)/1000,
                 'time': datetime.now().strftime('%d.%m.%Y %H:%M')
             }
         else:
             return {'success': False, 'error': 'Город не найден'}
     except Exception as e:
-        return {'success': False, 'error': f'Ошибка: {e}'}
+        return {'success': False, 'error': str(e)}
 
 def get_5day_forecast(city: str) -> dict:
     try:
@@ -134,499 +111,285 @@ def get_5day_forecast(city: str) -> dict:
                 dt = datetime.fromtimestamp(item['dt'])
                 key = dt.strftime('%Y-%m-%d')
                 if key not in daily:
-                    daily[key] = {
-                        'temps': [], 'descriptions': [], 'wind_speeds': [],
-                        'humidity': [], 'rain': False, 'snow': False, 'date': dt
-                    }
+                    daily[key] = {'temps': [], 'desc': [], 'wind': [], 'hum': [], 'rain': False, 'date': dt}
                 daily[key]['temps'].append(item['main']['temp'])
-                daily[key]['descriptions'].append(item['weather'][0]['description'])
-                daily[key]['wind_speeds'].append(item['wind']['speed'])
-                daily[key]['humidity'].append(item['main']['humidity'])
-                if 'rain' in item and item['rain'].get('3h', 0) > 0: daily[key]['rain'] = True
-                if 'snow' in item and item['snow'].get('3h', 0) > 0: daily[key]['snow'] = True
+                daily[key]['desc'].append(item['weather'][0]['description'])
+                daily[key]['wind'].append(item['wind']['speed'])
+                daily[key]['hum'].append(item['main']['humidity'])
+                if item.get('rain', {}).get('3h', 0) > 0:
+                    daily[key]['rain'] = True
             forecasts = []
-            for key, day in list(daily.items())[:5]:
+            for key, d in list(daily.items())[:5]:
                 forecasts.append({
-                    'date': day['date'],
-                    'temp_max': max(day['temps']),
-                    'temp_min': min(day['temps']),
-                    'temp_day': sum(day['temps'])/len(day['temps']),
-                    'description': max(set(day['descriptions']), key=day['descriptions'].count),
-                    'wind_speed': max(day['wind_speeds']),
-                    'humidity': sum(day['humidity'])/len(day['humidity']),
-                    'rain': day['rain'], 'snow': day['snow']
+                    'date': d['date'],
+                    'temp_max': max(d['temps']),
+                    'temp_min': min(d['temps']),
+                    'temp_day': sum(d['temps'])/len(d['temps']),
+                    'description': max(set(d['desc']), key=d['desc'].count),
+                    'wind_speed': max(d['wind']),
+                    'humidity': sum(d['hum'])/len(d['hum']),
+                    'rain': d['rain']
                 })
             return {'success': True, 'city': city, 'forecasts': forecasts}
         else:
             return {'success': False, 'error': 'Город не найден'}
     except Exception as e:
-        return {'success': False, 'error': f'Ошибка: {e}'}
+        return {'success': False, 'error': str(e)}
 
-def get_driver_tips(temp, wind, humidity, desc, rain, snow):
+def get_driver_tips(temp, wind, hum, desc, rain):
     tips = []
-    if temp < -30: tips.append("❄️❄️ ЭКСТРЕМАЛЬНЫЙ МОРОЗ: не выезжай без крайней необходимости")
-    elif temp < -20: tips.append("❄️ Сильный мороз: прогревай 10-15 мин, проверь аккумулятор")
-    elif temp < -10: tips.append("❄️ Холодно: дистанция ×2")
-    elif temp < 0: tips.append("⚠️ Гололед: дистанция ×3, плавно")
-    elif temp > 35: tips.append("🔥 Экстремальная жара: проверь охлаждающую жидкость")
-    elif temp > 30: tips.append("🔥 Сильная жара: используй кондиционер")
-    elif temp > 25: tips.append("☀️ Жарко: проветривай салон")
-    if wind > 20: tips.append("💨 УРАГАН: будь осторожен на мостах")
-    elif wind > 15: tips.append("💨 Очень сильный ветер: крепче держи руль")
-    elif wind > 10: tips.append("💨 Сильный ветер: внимательней при обгоне фур")
-    if rain: tips.append("🌧️ ДОЖДЬ: включи фары, дистанция ×2, избегай луж")
-    if snow: tips.append("🌨️ СНЕГОПАД: проверь резину, чисти снег с крыши")
-    if 'гроза' in desc: tips.append("⛈️ ГРОЗА: пережди в безопасном месте")
-    if 'туман' in desc: tips.append("🌫️ ТУМАН: противотуманки, снизь скорость")
-    if humidity > 85: tips.append("💧 Высокая влажность: стекла могут потеть, используй кондиционер")
-    if not tips: tips.append("✅ Погода благоприятная, хорошей дороги!")
-    return "\n".join(tips[:4])
+    if temp < 0: tips.append("⚠️ Гололед, осторожно!")
+    if temp > 30: tips.append("🔥 Жара, проверьте охлаждение")
+    if wind > 15: tips.append("💨 Сильный ветер")
+    if rain: tips.append("🌧️ Дождь, дистанция больше")
+    if not tips: tips.append("✅ Погода хорошая")
+    return "\n".join(tips[:3])
 
-def format_weather_message(weather: dict) -> str:
-    if not weather['success']: return f"❌ {weather['error']}"
-    return (f"🌍 *ПОГОДА В {weather['city'].upper()}*\n📅 {weather['time']}\n"
-            f"☁️ {weather['description'].capitalize()}\n"
-            f"🌡️ *{weather['temp']:.1f}°C* (ощущается {weather['feels_like']:.1f}°C)\n"
-            f"💧 Влажность: {weather['humidity']}%\n"
-            f"📊 Давление: {weather['pressure']:.1f} мм рт.ст.\n"
-            f"💨 Ветер: {weather['wind_speed']:.1f} м/с\n"
-            f"👁️ Видимость: {weather['visibility']:.1f} км\n"
-            f"☁️ Облачность: {weather['clouds']}%\n\n"
-            f"🚗 *СОВЕТЫ:*\n{get_driver_tips(weather['temp'], weather['wind_speed'], weather['humidity'], weather['description'], 'дождь' in weather['description'], 'снег' in weather['description'])}")
+def format_weather_message(w):
+    if not w['success']: return f"❌ {w['error']}"
+    return (f"🌍 *{w['city'].upper()}* {w['time']}\n"
+            f"🌡️ {w['temp']:.0f}°C (ощущается {w['feels_like']:.0f}°C)\n"
+            f"💧 Влажность {w['humidity']}%, 💨 {w['wind_speed']:.0f} м/с\n"
+            f"☁️ {w['description']}\n\n"
+            f"🚗 *Совет:* {get_driver_tips(w['temp'], w['wind_speed'], w['humidity'], w['description'], False)}")
 
-def format_forecast_message(forecast_data: dict) -> str:
-    if not forecast_data['success']: return f"❌ {forecast_data['error']}"
-    days_ru = {'Monday':'Понедельник','Tuesday':'Вторник','Wednesday':'Среда','Thursday':'Четверг','Friday':'Пятница','Saturday':'Суббота','Sunday':'Воскресенье'}
-    msg = f"📅 *ПРОГНОЗ НА 5 ДНЕЙ - {forecast_data['city'].upper()}*\n" + "━"*30 + "\n\n"
+def format_forecast_message(f):
+    if not f['success']: return f"❌ {f['error']}"
+    ru_days = {'Monday':'Пн','Tuesday':'Вт','Wednesday':'Ср','Thursday':'Чт','Friday':'Пт','Saturday':'Сб','Sunday':'Вс'}
+    msg = f"📅 *ПРОГНОЗ НА 5 ДНЕЙ - {f['city'].upper()}*\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     today = datetime.now().date()
-    for day in forecast_data['forecasts']:
-        day_date = day['date'].date()
-        eng = day['date'].strftime('%A')
-        if day_date == today: header = "Сегодня"
-        elif day_date == today + timedelta(days=1): header = f"Завтра ({days_ru.get(eng, eng)})"
-        else: header = days_ru.get(eng, eng)
-        msg += f"📌 *{header}* {day_date.strftime('%d.%m')}\n🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C\n"
-        msg += f"☁️ {day['description'].capitalize()}\n💨 Ветер до {day['wind_speed']:.0f} м/с\n"
-        if day['rain']: msg += "🌧️ Дожди\n"
-        if day['snow']: msg += "🌨️ Снег\n"
-        # ВАЖНО: добавляем советы водителю
-        tips = get_driver_tips(day['temp_day'], day['wind_speed'], day['humidity'], day['description'], day['rain'], day['snow'])
-        msg += f"🚗 *Советы:* {tips}\n\n" + "─"*20 + "\n\n"
+    for day in f['forecasts']:
+        d = day['date'].date()
+        if d == today: header = "Сегодня"
+        elif d == today + timedelta(days=1): header = "Завтра"
+        else: header = ru_days.get(day['date'].strftime('%A'), day['date'].strftime('%A'))
+        msg += f"\n📌 *{header}* {d.strftime('%d.%m')}\n🌡️ {day['temp_min']:.0f}~{day['temp_max']:.0f}°C\n"
+        msg += f"☁️ {day['description']}\n💨 Ветер до {day['wind_speed']:.0f} м/с\n"
+        if day['rain']: msg += "🌧️ Дождь\n"
+        tips = get_driver_tips(day['temp_day'], day['wind_speed'], day['humidity'], day['description'], day['rain'])
+        msg += f"🚗 *Совет:* {tips}\n"
     return msg
 
 # --------------------------------------------------------------
-# ОЦЕНКА АВТОМОБИЛЕЙ
+# ОЦЕНКА АВТО
 # --------------------------------------------------------------
-def calculate_car_value(model: str, year: int, km: int) -> dict:
-    current_year = datetime.now().year
-    age = current_year - year
-    specs = CARS_DB.get(model, {'price_new': 1000000, 'reliability': 70, 'parts_cost': 'средняя', 'fuel': 8.0})
+def calculate_car_value(model, year, km):
+    age = datetime.now().year - year
+    specs = CARS_DB.get(model, {'price_new': 1000000, 'reliability': 70})
     price_new = specs['price_new']
-    year_depr = min(0.40, age * 0.05)
-    km_depr = min(0.25, (km / 10000) * 0.003)
-    total_depr = max(year_depr, km_depr)
-    base_price = price_new * (1 - total_depr)
-    rel = specs['reliability']
-    if rel >= 90: rel_mult = 1.30
-    elif rel >= 80: rel_mult = 1.15
-    elif rel >= 70: rel_mult = 1.00
-    elif rel >= 60: rel_mult = 0.90
-    else: rel_mult = 0.80
-    market_mult = 1.65
-    if age <= 3: age_mult = 1.0
-    elif age <= 7: age_mult = 0.95
-    elif age <= 12: age_mult = 0.85
-    elif age <= 18: age_mult = 0.75
-    else: age_mult = 0.65
-    final_price = base_price * rel_mult * market_mult * age_mult
-    final_price = min(final_price, price_new * 1.0)
-    final_price = max(final_price, 50000)
-    final_price = int(final_price / 1000) * 1000
-    if age <= 5 and km < 80000: condition, icon, verdict = "отличное", "✅", "Практически новый автомобиль. Отличный вариант!"
-    elif age <= 8 and km < 130000: condition, icon, verdict = "хорошее", "🟢", "Хорошее состояние. Рекомендуется диагностика."
-    elif age <= 12 and km < 180000: condition, icon, verdict = "среднее", "⚠️", "Среднее состояние. Требуется осмотр специалиста."
-    elif age <= 18 and km < 250000: condition, icon, verdict = "выше среднего износа", "🔴", "Возраст сказывается, но ещё послужит."
-    else: condition, icon, verdict = "высокий износ", "❌", "Автомобиль возрастной. Для опытных."
-    recommendations = []
-    if age > 7: recommendations.append("🔧 Проверить кузов на коррозию")
-    if km > 120000: recommendations.append("⚙️ Диагностика двигателя и коробки")
-    if age > 5 and km > 70000: recommendations.append("🛞 Состояние подвески и тормозов")
-    if specs['parts_cost'] == 'высокая' and age > 5: recommendations.append("💰 Учитывайте стоимость запчастей")
-    if 'Toyota' in model or 'Honda' in model: recommendations.append("🔑 Надёжная модель, но проверьте ходовую")
-    if not recommendations: recommendations.append("✅ Стандартная диагностика перед покупкой")
-    return {
-        'success': True, 'model': model, 'year': year, 'age': age, 'km': km,
-        'price_new': price_new, 'current_price': final_price,
-        'condition': condition, 'condition_icon': icon, 'verdict': verdict,
-        'reliability': specs['reliability'], 'parts_cost': specs['parts_cost'],
-        'fuel_consumption': specs['fuel'], 'recommendations': recommendations,
-        'year_depreciation': int(year_depr * 100), 'km_depreciation': int(km_depr * 100)
-    }
+    depr = min(0.5, age*0.05 + (km/10000)*0.002)
+    price = price_new * (1 - depr) * 1.6  # наценка рынка
+    price = max(50000, min(price_new, int(price/1000)*1000))
+    return {'model': model, 'year': year, 'km': km, 'price': price, 'reliability': specs['reliability']}
 
-def format_car_evaluation(eval_data: dict) -> str:
-    msg = f"🚗 *ОЦЕНКА АВТОМОБИЛЯ*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    msg += f"📋 *{eval_data['model']}*\n• Год: {eval_data['year']} ({eval_data['age']} лет)\n• Пробег: {eval_data['km']:,} км\n\n"
-    msg += f"💰 *СТОИМОСТЬ:*\n• Новая цена: {eval_data['price_new']:,} ₽\n• Рыночная цена: *{eval_data['current_price']:,} ₽*\n"
-    msg += f"• Износ по годам: {eval_data['year_depreciation']}%\n• Износ по пробегу: {eval_data['km_depreciation']}%\n\n"
-    msg += f"📊 *ХАРАКТЕРИСТИКИ:*\n• Надёжность: {eval_data['reliability']}/100\n• Расход: {eval_data['fuel_consumption']} л/100км\n• Запчасти: {eval_data['parts_cost']}\n\n"
-    msg += f"{eval_data['condition_icon']} *СОСТОЯНИЕ:* {eval_data['condition'].upper()}\n\n"
-    msg += f"🔍 *ЧТО ПРОВЕРИТЬ:*\n" + "\n".join(eval_data['recommendations'][:5]) + "\n\n"
-    msg += f"💡 *ВЕРДИКТ:* {eval_data['verdict']}\n"
-    msg += f"\n💰 *ДИАПАЗОН ЦЕН В ОБЪЯВЛЕНИЯХ:* {int(eval_data['current_price']*0.85):,} – {int(eval_data['current_price']*1.15):,} ₽"
-    return msg
+def format_car(eval_data):
+    return (f"🚗 *ОЦЕНКА {eval_data['model']}*\n"
+            f"📅 {eval_data['year']} г.  Пробег {eval_data['km']:,} км\n"
+            f"💰 Рыночная цена: *{eval_data['price']:,} ₽*\n"
+            f"📊 Надёжность: {eval_data['reliability']}/100\n"
+            f"💡 Проверьте кузов и двигатель при покупке.")
 
 # --------------------------------------------------------------
 # КЛАВИАТУРЫ
 # --------------------------------------------------------------
-def get_main_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🌤 Погода сейчас"), KeyboardButton(text="📅 Прогноз на 5 дней")],
-            [KeyboardButton(text="🚗 Советы водителю"), KeyboardButton(text="🚘 Оценить авто")],
-            [KeyboardButton(text="⚙️ Установить город"), KeyboardButton(text="🔔 Подписка")],
-            [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ О боте")]
-        ], resize_keyboard=True
-    )
+def main_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🌤 Погода сейчас"), KeyboardButton(text="📅 Прогноз на 5 дней")],
+        [KeyboardButton(text="🚗 Советы"), KeyboardButton(text="🚘 Оценить авто")],
+        [KeyboardButton(text="🌆 Город"), KeyboardButton(text="🔔 Подписка")],
+        [KeyboardButton(text="❓ Помощь")]
+    ], resize_keyboard=True)
 
-def get_cities_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🇷🇺 Москва"), KeyboardButton(text="🇷🇺 Санкт-Петербург")],
-            [KeyboardButton(text="🇷🇺 Новосибирск"), KeyboardButton(text="🇷🇺 Екатеринбург")],
-            [KeyboardButton(text="🇷🇺 Казань"), KeyboardButton(text="🇷🇺 Омск")],
-            [KeyboardButton(text="🇷🇺 Красноярск"), KeyboardButton(text="🇷🇺 Владивосток")],
-            [KeyboardButton(text="⬅️ Назад в меню")]
-        ], resize_keyboard=True
-    )
+def cities_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="🇷🇺 Москва"), KeyboardButton(text="🇷🇺 Санкт-Петербург")],
+        [KeyboardButton(text="🇷🇺 Новосибирск"), KeyboardButton(text="🇷🇺 Екатеринбург")],
+        [KeyboardButton(text="🇷🇺 Казань"), KeyboardButton(text="🇷🇺 Омск")],
+        [KeyboardButton(text="🇷🇺 Красноярск"), KeyboardButton(text="🇷🇺 Владивосток")],
+        [KeyboardButton(text="⬅️ Назад")]
+    ], resize_keyboard=True)
 
-def get_weather_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🔄 Обновить погоду"), KeyboardButton(text="📅 Прогноз на 5 дней")],
-            [KeyboardButton(text="🌤 Другой город"), KeyboardButton(text="⬅️ Главное меню")]
-        ], resize_keyboard=True
-    )
+def sub_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="✅ Подписаться"), KeyboardButton(text="❌ Отписаться")],
+        [KeyboardButton(text="⏰ Время"), KeyboardButton(text="📊 Статус")],
+        [KeyboardButton(text="⬅️ Назад")]
+    ], resize_keyboard=True)
 
-def get_subscription_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="✅ Подписаться"), KeyboardButton(text="❌ Отписаться")],
-            [KeyboardButton(text="⏰ Выбрать время"), KeyboardButton(text="📊 Статус подписки")],
-            [KeyboardButton(text="⬅️ Главное меню")]
-        ], resize_keyboard=True
-    )
+def back_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="⬅️ Назад")]], resize_keyboard=True)
 
-def get_back_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True
-    )
-
-def get_car_model_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🇯🇵 Toyota Vitz"), KeyboardButton(text="🇯🇵 Toyota Corolla")],
-            [KeyboardButton(text="🇰🇷 KIA Rio"), KeyboardButton(text="🇰🇷 Hyundai Solaris")],
-            [KeyboardButton(text="🇷🇺 Lada Granta"), KeyboardButton(text="🇷🇺 Lada Vesta")],
-            [KeyboardButton(text="🇪🇺 Volkswagen Polo"), KeyboardButton(text="🇨🇳 Chery Tiggo T11")],
-            [KeyboardButton(text="🚘 Другие модели"), KeyboardButton(text="⬅️ Назад в меню")]
-        ], resize_keyboard=True
-    )
-
-def get_other_models_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🇯🇵 Toyota Camry"), KeyboardButton(text="🇯🇵 Nissan Qashqai")],
-            [KeyboardButton(text="🇰🇷 KIA Sportage"), KeyboardButton(text="🇰🇷 Hyundai Creta")],
-            [KeyboardButton(text="🇩🇪 BMW 3 series"), KeyboardButton(text="🇩🇪 Audi A4")],
-            [KeyboardButton(text="🇺🇸 Chevrolet Lacetti"), KeyboardButton(text="🇨🇳 Geely Coolray")],
-            [KeyboardButton(text="⬅️ Назад к моделям")]
-        ], resize_keyboard=True
-    )
+def car_keyboard():
+    return ReplyKeyboardMarkup(keyboard=[
+        [KeyboardButton(text="Toyota Vitz"), KeyboardButton(text="Toyota Corolla")],
+        [KeyboardButton(text="KIA Rio"), KeyboardButton(text="Hyundai Solaris")],
+        [KeyboardButton(text="Lada Granta"), KeyboardButton(text="Volkswagen Polo")],
+        [KeyboardButton(text="⬅️ Назад")]
+    ], resize_keyboard=True)
 
 # --------------------------------------------------------------
 # ОБРАБОТЧИКИ
 # --------------------------------------------------------------
 @dp.message(Command("start"))
-async def cmd_start(message: Message):
-    await message.answer(
-        "👋 *Добро пожаловать в AutoWeatherBot!*\n\n"
-        "🚗 Я даю погоду с советами и оцениваю авто.\n"
-        "📊 База: более 30 моделей.\n"
-        "🌍 Города можно вводить на русском – бот сам переведёт.\n\n"
-        "👇 Выберите действие:",
-        parse_mode="Markdown", reply_markup=get_main_keyboard()
-    )
+async def start_cmd(msg: Message):
+    await msg.answer("👋 Привет! Я бот для водителей:\n🌤 Погода с советами\n🚘 Оценка авто\nВыбери действие:", reply_markup=main_keyboard())
 
-# ----- Явный обработчик для кнопок городов (с флагом и без) -----
-@dp.message(F.text.startswith(("🇷🇺", "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань", "Омск", "Красноярск", "Владивосток")))
-async def handle_city_button(message: Message):
-    city = message.text.strip()
-    city_lat = city_to_latin(city)
-    cid = message.chat.id
-    w = await asyncio.to_thread(get_weather, city_lat)
-    if w['success']:
-        user_cities[cid] = city_lat
-        await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
-    else:
-        await message.answer(f"❌ Город '{city}' не найден. Попробуйте написать на латинице (например, Omsk).", reply_markup=get_main_keyboard())
-
+# Главное меню
 @dp.message(F.text == "🌤 Погода сейчас")
-async def weather_now(message: Message):
-    cid = message.chat.id
+async def now_weather(msg: Message):
+    cid = msg.chat.id
     if cid not in user_cities:
-        await message.answer("🌆 Сначала установите город через /setcity или выберите из списка:", reply_markup=get_cities_keyboard())
+        await msg.answer("Сначала выберите город:", reply_markup=cities_keyboard())
         return
-    await message.answer("🔍 Получаю погоду...", parse_mode="Markdown")
     w = await asyncio.to_thread(get_weather, user_cities[cid])
-    await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
+    await msg.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=main_keyboard())
 
 @dp.message(F.text == "📅 Прогноз на 5 дней")
-async def forecast_5days(message: Message):
-    cid = message.chat.id
+async def forecast_5(msg: Message):
+    cid = msg.chat.id
     if cid not in user_cities:
-        await message.answer("🌆 Сначала установите город!", reply_markup=get_cities_keyboard())
+        await msg.answer("Сначала выберите город:", reply_markup=cities_keyboard())
         return
-    await message.answer("🔍 Получаю прогноз на 5 дней...", parse_mode="Markdown")
     f = await asyncio.to_thread(get_5day_forecast, user_cities[cid])
-    await message.answer(format_forecast_message(f), parse_mode="Markdown", reply_markup=get_weather_keyboard())
+    await msg.answer(format_forecast_message(f), parse_mode="Markdown", reply_markup=main_keyboard())
 
-@dp.message(F.text == "🚗 Советы водителю")
-async def driver_tips(message: Message):
-    await message.answer(
-        "🚗 *ПОЛЕЗНЫЕ СОВЕТЫ*\n\n"
-        "❄️ Зимой: щетка, аккумулятор, дистанция ×2\n"
-        "🌧️ В дождь: фары, дворники, дистанция ×2\n"
-        "☀️ В жару: антифриз, кондиционер\n"
-        "🌫️ В туман: противотуманки, скорость ниже\n"
-        "⚠️ Гололед: плавно, торможение двигателем",
-        parse_mode="Markdown", reply_markup=get_back_keyboard()
-    )
+@dp.message(F.text == "🚗 Советы")
+async def tips(msg: Message):
+    await msg.answer("❄️ Зимой дистанция больше, проверьте аккумулятор\n🌧️ В дождь включите фары\n☀️ В жару следите за антифризом", reply_markup=back_keyboard())
 
-@dp.message(F.text == "⚙️ Установить город")
-async def set_city_prompt(message: Message):
-    await message.answer("🌆 Напишите название города на русском или английском.\nНапример: Омск, Omsk, Москва", parse_mode="Markdown", reply_markup=get_back_keyboard())
+@dp.message(F.text == "🌆 Город")
+async def change_city(msg: Message):
+    await msg.answer("Выберите город из списка или напишите название:", reply_markup=cities_keyboard())
+
+@dp.message(F.text == "🔔 Подписка")
+async def sub_menu(msg: Message):
+    await msg.answer("Настройте ежедневную рассылку прогноза:", reply_markup=sub_keyboard())
+
+@dp.message(F.text == "✅ Подписаться")
+async def subscribe(msg: Message):
+    global CHAT_ID
+    cid = msg.chat.id
+    if cid not in user_cities:
+        await msg.answer("Сначала установите город через кнопку Город")
+        return
+    CHAT_ID = str(cid)
+    await msg.answer("✅ Вы подписаны на рассылку в 08:00")
+
+@dp.message(F.text == "❌ Отписаться")
+async def unsubscribe(msg: Message):
+    global CHAT_ID
+    if CHAT_ID and int(CHAT_ID) == msg.chat.id:
+        CHAT_ID = None
+        await msg.answer("❌ Вы отписались")
+
+@dp.message(F.text == "⏰ Время")
+async def set_time(msg: Message):
+    await msg.answer("Введите время в формате ЧЧ:ММ, например 08:00", reply_markup=back_keyboard())
+
+@dp.message(F.text == "📊 Статус")
+async def status_sub(msg: Message):
+    global CHAT_ID
+    if CHAT_ID and int(CHAT_ID) == msg.chat.id:
+        city = user_cities.get(msg.chat.id, "не задан")
+        await msg.answer(f"✅ Подписка активна\nГород: {city}\nВремя: {user_subscription_time.get(msg.chat.id, '08:00')}")
+    else:
+        await msg.answer("❌ Подписка не активна")
 
 @dp.message(F.text == "🚘 Оценить авто")
-async def evaluate_car_start(message: Message):
-    user_car_data[message.chat.id] = {}
-    await message.answer(
-        "🚘 *ОЦЕНКА АВТОМОБИЛЯ*\n\n"
-        "Шаг 1. Введите **год выпуска** (4 цифры, например 2010):",
-        parse_mode="Markdown", reply_markup=get_back_keyboard()
-    )
+async def eval_start(msg: Message):
+    user_car_data[msg.chat.id] = {}
+    await msg.answer("Введите год выпуска (4 цифры):", reply_markup=back_keyboard())
 
-# --------------------------------------------------------------
-# УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (все остальные сообщения)
-# --------------------------------------------------------------
-@dp.message()
-async def handle_all_text(message: Message):
-    cid = message.chat.id
-    text = message.text.strip()
+@dp.message(F.text == "⬅️ Назад")
+async def back(msg: Message):
+    user_car_data.pop(msg.chat.id, None)
+    await msg.answer("Главное меню", reply_markup=main_keyboard())
 
-    # Режим оценки авто
+# Обработка кнопок городов (включая флаг)
+@dp.message(F.text.startswith(("🇷🇺", "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань", "Омск", "Красноярск", "Владивосток")))
+async def choose_city(msg: Message):
+    city_ru = msg.text.strip()
+    city_lat = city_to_latin(city_ru)
+    w = await asyncio.to_thread(get_weather, city_lat)
+    if w['success']:
+        user_cities[msg.chat.id] = city_lat
+        await msg.answer(f"Город {city_ru} установлен!", reply_markup=main_keyboard())
+        await msg.answer(format_weather_message(w), parse_mode="Markdown")
+    else:
+        await msg.answer(f"Город {city_ru} не найден. Попробуйте написать на латинице (Omsk)")
+
+# Обработка ручного ввода города
+@dp.message(F.text)
+async def other_text(msg: Message):
+    cid = msg.chat.id
+    text = msg.text.strip()
+    # Если в режиме оценки авто
     if cid in user_car_data:
         data = user_car_data[cid]
         if 'year' not in data:
-            if text.isdigit() and len(text) == 4:
-                year = int(text)
-                if 1970 <= year <= datetime.now().year:
-                    data['year'] = year
-                    await message.answer(f"✅ Год: {year}\n\nШаг 2. Введите **пробег в тысячах км** (например, 110):", parse_mode="Markdown")
-                else:
-                    await message.answer("❌ Введите год от 1970 до текущего")
+            if text.isdigit() and 1970 <= int(text) <= datetime.now().year:
+                data['year'] = int(text)
+                await msg.answer("Введите пробег в тысячах км (например 110):")
             else:
-                await message.answer("❌ Введите год цифрами, например 2010")
-            return
-
-        if 'km' not in data:
+                await msg.answer("Ошибка: введите год от 1970 до текущего")
+        elif 'km' not in data:
             try:
-                km_th = int(text)
-                if 0 <= km_th <= 800:
-                    data['km'] = km_th * 1000
-                    await message.answer(f"✅ Пробег: {km_th} тыс. км\n\nШаг 3. Выберите модель:", parse_mode="Markdown", reply_markup=get_car_model_keyboard())
+                km = int(text)
+                if 0 <= km <= 800:
+                    data['km'] = km * 1000
+                    await msg.answer("Выберите модель:", reply_markup=car_keyboard())
                 else:
-                    await message.answer("❌ Введите пробег от 0 до 800 тыс. км")
-            except ValueError:
-                await message.answer("❌ Введите пробег цифрами, например 110")
-            return
-
-        if 'model' not in data:
-            model_map = {
-                '🇯🇵 Toyota Vitz': 'Toyota Vitz', '🇯🇵 Toyota Corolla': 'Toyota Corolla', '🇯🇵 Toyota Camry': 'Toyota Camry',
-                '🇰🇷 KIA Rio': 'KIA Rio', '🇰🇷 Hyundai Solaris': 'Hyundai Solaris', '🇰🇷 KIA Sportage': 'KIA Sportage',
-                '🇰🇷 Hyundai Creta': 'Hyundai Creta', '🇷🇺 Lada Granta': 'Lada Granta', '🇷🇺 Lada Vesta': 'Lada Vesta',
-                '🇪🇺 Volkswagen Polo': 'Volkswagen Polo', '🇨🇳 Chery Tiggo T11': 'Chery Tiggo T11',
-                '🇯🇵 Nissan Qashqai': 'Nissan Qashqai', '🇩🇪 BMW 3 series': 'BMW 3 series', '🇩🇪 Audi A4': 'Audi A4',
-                '🇺🇸 Chevrolet Lacetti': 'Chevrolet Lacetti', '🇨🇳 Geely Coolray': 'Geely Coolray'
-            }
-            if text in model_map:
-                model = model_map[text]
-                data['model'] = model
-                evaluation = calculate_car_value(model, data['year'], data['km'])
-                await message.answer(format_car_evaluation(evaluation), parse_mode="Markdown", reply_markup=get_main_keyboard())
-                del user_car_data[cid]
-            elif text == "🚘 Другие модели":
-                await message.answer("Выберите модель:", reply_markup=get_other_models_keyboard())
-            elif text == "⬅️ Назад к моделям":
-                await message.answer("Выберите модель:", reply_markup=get_car_model_keyboard())
-            elif text == "⬅️ Назад в меню":
-                await message.answer("🔹 Главное меню", parse_mode="Markdown", reply_markup=get_main_keyboard())
-                del user_car_data[cid]
-            else:
-                found = next((car for car in CARS_DB if text.lower() in car.lower()), None)
-                if found:
-                    data['model'] = found
-                    evaluation = calculate_car_value(found, data['year'], data['km'])
-                    await message.answer(format_car_evaluation(evaluation), parse_mode="Markdown", reply_markup=get_main_keyboard())
-                    del user_car_data[cid]
-                else:
-                    await message.answer("❌ Модель не найдена. Выберите из списка или уточните название.", reply_markup=get_car_model_keyboard())
-            return
-
-    # ---- КОМАНДА УСТАНОВКИ ГОРОДА ----
-    if text.startswith("/setcity"):
-        city = text.replace("/setcity", "").strip()
-        if city:
-            city_lat = city_to_latin(city)
-            w = await asyncio.to_thread(get_weather, city_lat)
-            if w['success']:
-                user_cities[cid] = city_lat
-                await message.answer(f"✅ Город {city} установлен!", reply_markup=get_main_keyboard())
-            else:
-                await message.answer(f"❌ Город '{city}' не найден. Попробуйте написать на латинице (например, Omsk).")
+                    await msg.answer("Пробег от 0 до 800 тыс. км")
+            except:
+                await msg.answer("Введите число")
         else:
-            await message.answer("Напишите: /setcity Москва")
+            # модель уже должна быть выбрана через клавиатуру
+            await msg.answer("Выберите модель из списка", reply_markup=car_keyboard())
         return
 
-    # ---- ВВОД ВРЕМЕНИ ДЛЯ ПОДПИСКИ ----
+    # Если ввод времени для подписки
     if len(text) == 5 and text[2] == ':' and text[:2].isdigit() and text[3:].isdigit():
         h, m = int(text[:2]), int(text[3:])
         if 0 <= h <= 23 and 0 <= m <= 59:
             user_subscription_time[cid] = text
-            await message.answer(f"✅ Время подписки: {text}", parse_mode="Markdown", reply_markup=get_subscription_keyboard())
-            return
+            await msg.answer(f"Время рассылки установлено: {text}", reply_markup=sub_keyboard())
+        else:
+            await msg.answer("Неверный формат")
+        return
 
-    # ---- ПОИСК ГОРОДА (если не распознано выше) ----
+    # Если выбран автомобиль из клавиатуры оценки
+    if text in CARS_DB and cid in user_car_data and 'km' in user_car_data[cid]:
+        data = user_car_data[cid]
+        model = text
+        evaluation = calculate_car_value(model, data['year'], data['km'])
+        await msg.answer(format_car(evaluation), parse_mode="Markdown", reply_markup=main_keyboard())
+        del user_car_data[cid]
+        return
+
+    # Иначе пробуем как город
     city_lat = city_to_latin(text)
     w = await asyncio.to_thread(get_weather, city_lat)
     if w['success']:
         user_cities[cid] = city_lat
-        await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
+        await msg.answer(f"Город {text} установлен!", reply_markup=main_keyboard())
+        await msg.answer(format_weather_message(w), parse_mode="Markdown")
     else:
-        await message.answer(
-            f"❌ Город '{text}' не найден.\n\n"
-            "• Попробуйте написать на латинице (Omsk, Moscow)\n"
-            "• Или используйте /setcity Москва\n"
-            "• Для оценки авто нажмите 🚘 Оценить авто",
-            reply_markup=get_main_keyboard()
-        )
+        await msg.answer(f"Не понял. Нажмите кнопку меню или введите город (Москва, Omsk).", reply_markup=main_keyboard())
 
 # --------------------------------------------------------------
-# ОСТАЛЬНЫЕ КНОПКИ
+# РАССЫЛКА
 # --------------------------------------------------------------
-@dp.message(F.text == "⬅️ Назад в меню")
-@dp.message(F.text == "⬅️ Главное меню")
-async def back_main(message: Message):
-    if message.chat.id in user_car_data:
-        del user_car_data[message.chat.id]
-    await message.answer("🔹 Главное меню", parse_mode="Markdown", reply_markup=get_main_keyboard())
-
-@dp.message(F.text == "🔄 Обновить погоду")
-async def refresh_weather(message: Message):
-    cid = message.chat.id
-    if cid in user_cities:
-        w = await asyncio.to_thread(get_weather, user_cities[cid])
-        await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
-    else:
-        await message.answer("⚠️ Сначала установите город!", reply_markup=get_cities_keyboard())
-
-@dp.message(F.text == "🌤 Другой город")
-async def another_city(message: Message):
-    await message.answer("🌆 Выберите город:", reply_markup=get_cities_keyboard())
-
-@dp.message(F.text == "🔔 Подписка")
-async def subscription_menu(message: Message):
-    cid = message.chat.id
-    city = user_cities.get(cid, "не установлен")
-    sub_time = user_subscription_time.get(cid, "08:00")
-    global CHAT_ID
-    is_sub = (CHAT_ID and int(CHAT_ID) == cid)
-    status = "✅ Активна" if is_sub else "❌ Не активна"
-    await message.answer(
-        f"🔔 *УПРАВЛЕНИЕ ПОДПИСКОЙ*\n\n🏙️ Город: {city}\n⏰ Время: {sub_time}\n📊 Статус: {status}\n\nВыберите действие:",
-        parse_mode="Markdown", reply_markup=get_subscription_keyboard()
-    )
-
-@dp.message(F.text == "✅ Подписаться")
-async def sub_on(message: Message):
-    global CHAT_ID
-    cid = message.chat.id
-    if cid not in user_cities:
-        await message.answer("⚠️ Сначала установите город!", reply_markup=get_main_keyboard())
-        return
-    CHAT_ID = str(cid)
-    await message.answer("✅ Вы подписаны на ежедневный прогноз!", reply_markup=get_main_keyboard())
-
-@dp.message(F.text == "❌ Отписаться")
-async def sub_off(message: Message):
-    global CHAT_ID
-    if CHAT_ID and int(CHAT_ID) == message.chat.id:
-        CHAT_ID = None
-        await message.answer("❌ Вы отписались от рассылки", parse_mode="Markdown")
-    else:
-        await message.answer("❌ Вы не были подписаны", parse_mode="Markdown")
-
-@dp.message(F.text == "⏰ Выбрать время")
-async def set_time_prompt(message: Message):
-    await message.answer("⏰ Введите время в формате ЧЧ:ММ (например 08:00)", parse_mode="Markdown", reply_markup=get_back_keyboard())
-
-@dp.message(F.text == "📊 Статус подписки")
-async def status_sub(message: Message):
-    global CHAT_ID
-    if CHAT_ID and int(CHAT_ID) == message.chat.id:
-        city = user_cities.get(message.chat.id, "не установлен")
-        sub_time = user_subscription_time.get(message.chat.id, "08:00")
-        await message.answer(f"✅ Подписка активна\nГород: {city}\nВремя: {sub_time}", parse_mode="Markdown")
-    else:
-        await message.answer("❌ Подписка не активна", parse_mode="Markdown")
-
-@dp.message(F.text == "❓ Помощь")
-async def help_cmd(message: Message):
-    await message.answer(
-        "❓ *Помощь*\n"
-        "🌤 Погода сейчас – текущая погода\n"
-        "📅 Прогноз на 5 дней – с советами водителю\n"
-        "🚗 Советы водителю – общие рекомендации\n"
-        "🚘 Оценить авто – год, пробег, модель → рыночная цена\n"
-        "⚙️ Установить город – можно на русском\n"
-        "🔔 Подписка – ежедневный прогноз\n\n"
-        "Команды: /start, /setcity Москва",
-        parse_mode="Markdown", reply_markup=get_main_keyboard()
-    )
-
-@dp.message(F.text == "ℹ️ О боте")
-async def about_bot(message: Message):
-    await message.answer(
-        "ℹ️ *О боте*\nВерсия 4.5\nПогода + оценка авто\nРеалистичные рыночные цены\n"
-        "🌍 Поддержка русских названий городов (кнопки работают)\n"
-        "📅 Прогноз на 5 дней включает советы водителю\n"
-        "База из 30+ моделей авто",
-        parse_mode="Markdown", reply_markup=get_back_keyboard()
-    )
-
-# --------------------------------------------------------------
-# ЕЖЕДНЕВНАЯ РАССЫЛКА
-# --------------------------------------------------------------
-def send_daily_weather():
+def send_daily():
     if not CHAT_ID:
         return
     cid = int(CHAT_ID)
     city = user_cities.get(cid, "Moscow")
-    forecast = get_5day_forecast(city)
-    if forecast['success']:
-        asyncio.create_task(bot.send_message(chat_id=cid, text=format_forecast_message(forecast), parse_mode="Markdown"))
+    f = get_5day_forecast(city)
+    if f['success']:
+        asyncio.create_task(bot.send_message(cid, format_forecast_message(f), parse_mode="Markdown"))
 
-def run_schedule():
+def schedule_loop():
+    schedule.every().day.at("08:00").do(send_daily)
     while True:
         schedule.run_pending()
         time.sleep(30)
@@ -635,14 +398,8 @@ def run_schedule():
 # ЗАПУСК
 # --------------------------------------------------------------
 async def main():
-    schedule.every().day.at("08:00").do(send_daily_weather)
-    threading.Thread(target=run_schedule, daemon=True).start()
-    print("\n" + "="*60)
-    print("✅ AUTO-WEATHER-BOT 4.5 ЗАПУЩЕН")
-    print("📅 Прогноз на 5 дней включает советы водителю")
-    print("🌍 Кнопки с городами работают, русские названия переводятся")
-    print("💰 Оценка авто – реалистичные рыночные цены")
-    print("="*60 + "\n")
+    threading.Thread(target=schedule_loop, daemon=True).start()
+    print("Бот запущен. Кнопки меню работают, прогноз с советами.")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
