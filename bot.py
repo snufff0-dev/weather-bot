@@ -1,11 +1,10 @@
-import os
 import logging
 import asyncio
 import threading
 import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 import requests
@@ -21,7 +20,9 @@ dp = Dispatcher()
 
 user_cities = {}
 user_subscription_time = {}
-user_car_data = {}  # для хранения данных оценки авто
+user_car_data = {}
+
+logging.basicConfig(level=logging.INFO)
 
 # ---------- ПЕРЕВОД РУССКИХ ГОРОДОВ В ЛАТИНИЦУ ----------
 RUS_TO_LAT = {
@@ -38,6 +39,23 @@ def city_to_latin(name: str) -> str:
     if low in RUS_TO_LAT:
         return RUS_TO_LAT[low]
     return name
+
+# ---------- БАЗА ДАННЫХ АВТОМОБИЛЕЙ (расширенная) ----------
+CARS_DB = {
+    'Toyota Vitz': {'price_new': 800000, 'reliability': 92, 'parts_cost': 'средняя', 'fuel': 6.5},
+    'Toyota Corolla': {'price_new': 2000000, 'reliability': 95, 'parts_cost': 'средняя', 'fuel': 7.5},
+    'Toyota Camry': {'price_new': 3500000, 'reliability': 95, 'parts_cost': 'высокая', 'fuel': 8.5},
+    'KIA Rio': {'price_new': 1300000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 7.3},
+    'Hyundai Solaris': {'price_new': 1280000, 'reliability': 85, 'parts_cost': 'средняя', 'fuel': 7.2},
+    'Lada Vesta': {'price_new': 1200000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 7.5},
+    'Lada Granta': {'price_new': 800000, 'reliability': 65, 'parts_cost': 'низкая', 'fuel': 7.0},
+    'Volkswagen Polo': {'price_new': 1350000, 'reliability': 80, 'parts_cost': 'средняя', 'fuel': 7.2},
+    'Chery Tiggo T11': {'price_new': 800000, 'reliability': 65, 'parts_cost': 'средняя', 'fuel': 9.5},
+    'Renault Logan': {'price_new': 1100000, 'reliability': 75, 'parts_cost': 'низкая', 'fuel': 7.0},
+    'Nissan Qashqai': {'price_new': 2200000, 'reliability': 80, 'parts_cost': 'средняя', 'fuel': 8.0},
+    'BMW 3 series': {'price_new': 3800000, 'reliability': 75, 'parts_cost': 'высокая', 'fuel': 8.5},
+    'Mercedes-Benz C-class': {'price_new': 4200000, 'reliability': 78, 'parts_cost': 'высокая', 'fuel': 8.5},
+}
 
 # ---------- ФУНКЦИИ ПОГОДЫ ----------
 def get_weather(city: str):
@@ -140,47 +158,131 @@ def format_forecast(f):
         msg += f"🚗 *Совет:* {driver_tips(day['t_avg'], day['wind'], day['desc'], day['rain'])}\n"
     return msg
 
-# ---------- БАЗА ДАННЫХ АВТО (новая) ----------
-CARS = {
-    'Toyota Vitz': {'new': 800000, 'reliability': 92, 'fuel': 6.5},
-    'Toyota Corolla': {'new': 2000000, 'reliability': 95, 'fuel': 7.5},
-    'Toyota Camry': {'new': 3500000, 'reliability': 95, 'fuel': 8.5},
-    'KIA Rio': {'new': 1300000, 'reliability': 85, 'fuel': 7.3},
-    'Hyundai Solaris': {'new': 1280000, 'reliability': 85, 'fuel': 7.2},
-    'Lada Vesta': {'new': 1200000, 'reliability': 70, 'fuel': 7.5},
-    'Lada Granta': {'new': 800000, 'reliability': 65, 'fuel': 7.0},
-    'Volkswagen Polo': {'new': 1350000, 'reliability': 80, 'fuel': 7.2},
-    'Chery Tiggo T11': {'new': 800000, 'reliability': 65, 'fuel': 9.5}
-}
+# ---------- ОЦЕНКА АВТОМОБИЛЯ (ПОДРОБНАЯ) ----------
+def calculate_car_value(model: str, year: int, km: int) -> dict:
+    current_year = datetime.now().year
+    age = current_year - year
 
-def evaluate_car(model, year, km):
-    age = datetime.now().year - year
-    base = CARS[model]['new']
-    depr = min(0.5, age * 0.05 + (km / 10000) * 0.002)
-    price = base * (1 - depr) * 1.55  # рыночная наценка
-    price = max(50000, min(base, int(price / 1000) * 1000))
-    tips = []
-    if age > 10:
-        tips.append("🔧 Возраст более 10 лет – проверьте кузов на коррозию")
-    if km > 150000:
-        tips.append("⚙️ Пробег большой – диагностика двигателя обязательна")
-    if CARS[model]['reliability'] > 85:
-        tips.append("✅ Надёжная модель, но всё равно проверьте историю обслуживания")
-    if not tips:
-        tips.append("💡 Перед покупкой проведите независимую диагностику")
-    advice = "\n".join(tips)
-    return (f"🚗 *{model}*\n"
-            f"📅 {year} г. / {km:,} км\n"
-            f"💰 Рыночная цена: *{price:,} ₽*\n"
-            f"📊 Надёжность: {CARS[model]['reliability']}/100\n"
-            f"⛽ Расход: {CARS[model]['fuel']} л/100 км\n\n"
-            f"💡 *Советы при покупке:*\n{advice}")
+    specs = CARS_DB.get(model, {'price_new': 1000000, 'reliability': 70, 'parts_cost': 'средняя', 'fuel': 8.0})
+    price_new = specs['price_new']
+
+    year_depr = min(0.40, age * 0.05)
+    km_depr = min(0.25, (km / 10000) * 0.003)
+    total_depr = max(year_depr, km_depr)
+
+    base_price = price_new * (1 - total_depr)
+
+    rel = specs['reliability']
+    if rel >= 90:
+        rel_mult = 1.30
+    elif rel >= 80:
+        rel_mult = 1.15
+    elif rel >= 70:
+        rel_mult = 1.00
+    elif rel >= 60:
+        rel_mult = 0.90
+    else:
+        rel_mult = 0.80
+
+    market_mult = 1.65
+    if age <= 3:
+        age_mult = 1.0
+    elif age <= 7:
+        age_mult = 0.95
+    elif age <= 12:
+        age_mult = 0.85
+    elif age <= 18:
+        age_mult = 0.75
+    else:
+        age_mult = 0.65
+
+    final_price = base_price * rel_mult * market_mult * age_mult
+    final_price = min(final_price, price_new * 1.0)
+    final_price = max(final_price, 50000)
+    final_price = int(final_price / 1000) * 1000
+
+    if age <= 5 and km < 80000:
+        condition = "отличное"
+        condition_icon = "✅"
+        verdict = "Практически новый автомобиль. Отличный вариант!"
+    elif age <= 8 and km < 130000:
+        condition = "хорошее"
+        condition_icon = "🟢"
+        verdict = "Хорошее состояние. Рекомендуется диагностика."
+    elif age <= 12 and km < 180000:
+        condition = "среднее"
+        condition_icon = "⚠️"
+        verdict = "Среднее состояние. Требуется осмотр специалиста."
+    elif age <= 18 and km < 250000:
+        condition = "выше среднего износа"
+        condition_icon = "🔴"
+        verdict = "Возраст сказывается, но ещё послужит."
+    else:
+        condition = "высокий износ"
+        condition_icon = "❌"
+        verdict = "Автомобиль возрастной. Для опытных."
+
+    recommendations = []
+    if age > 7:
+        recommendations.append("🔧 Проверить кузов на коррозию")
+    if km > 120000:
+        recommendations.append("⚙️ Диагностика двигателя и коробки")
+    if age > 5 and km > 70000:
+        recommendations.append("🛞 Состояние подвески и тормозов")
+    if specs['parts_cost'] == 'высокая' and age > 5:
+        recommendations.append("💰 Учитывайте стоимость запчастей")
+    if 'Toyota' in model or 'Honda' in model:
+        recommendations.append("🔑 Надёжная модель, но проверьте ходовую")
+    if not recommendations:
+        recommendations.append("✅ Стандартная диагностика перед покупкой")
+
+    return {
+        'success': True,
+        'model': model,
+        'year': year,
+        'age': age,
+        'km': km,
+        'price_new': price_new,
+        'current_price': final_price,
+        'condition': condition,
+        'condition_icon': condition_icon,
+        'verdict': verdict,
+        'reliability': specs['reliability'],
+        'parts_cost': specs['parts_cost'],
+        'fuel_consumption': specs['fuel'],
+        'recommendations': recommendations,
+        'year_depreciation': int(year_depr * 100),
+        'km_depreciation': int(km_depr * 100)
+    }
+
+def format_car_evaluation(eval_data: dict) -> str:
+    msg = "🚗 *ОЦЕНКА АВТОМОБИЛЯ*\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg += f"📋 *{eval_data['model']}*\n"
+    msg += f"• Год выпуска: {eval_data['year']} ({eval_data['age']} лет)\n"
+    msg += f"• Пробег: {eval_data['km']:,} км\n\n"
+    msg += f"💰 *СТОИМОСТЬ (рынок 2025):*\n"
+    msg += f"• Новая цена (в ценах того года): {eval_data['price_new']:,} ₽\n"
+    msg += f"• Рыночная цена: *{eval_data['current_price']:,} ₽*\n"
+    msg += f"• Износ по годам: {eval_data['year_depreciation']}%\n"
+    msg += f"• Износ по пробегу: {eval_data['km_depreciation']}%\n\n"
+    msg += f"📊 *ХАРАКТЕРИСТИКИ:*\n"
+    msg += f"• Надёжность: {eval_data['reliability']}/100\n"
+    msg += f"• Расход топлива: {eval_data['fuel_consumption']} л/100км\n"
+    msg += f"• Стоимость запчастей: {eval_data['parts_cost']}\n\n"
+    msg += f"{eval_data['condition_icon']} *СОСТОЯНИЕ:* {eval_data['condition'].upper()}\n\n"
+    msg += f"🔍 *ЧТО ПРОВЕРИТЬ ПРИ ПОКУПКЕ:*\n"
+    for rec in eval_data['recommendations'][:5]:
+        msg += f"{rec}\n"
+    msg += f"\n💡 *ВЕРДИКТ:*\n{eval_data['verdict']}\n"
+    msg += f"\n💰 *ДИАПАЗОН ЦЕН В ОБЪЯВЛЕНИЯХ:* {int(eval_data['current_price']*0.85):,} – {int(eval_data['current_price']*1.15):,} ₽"
+    return msg
 
 # ---------- КЛАВИАТУРЫ ----------
 def main_kb():
     return ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="🌤 Погода"), KeyboardButton(text="📅 Прогноз")],
-        [KeyboardButton(text="🚗 Советы"), KeyboardButton(text="🚘 Оценить авто")],
+        [KeyboardButton(text="🚗 Советы"), KeyboardButton(text="🛠 Помощь при покупке")],
         [KeyboardButton(text="🌆 Город"), KeyboardButton(text="🔔 Подписка")]
     ], resize_keyboard=True)
 
@@ -214,10 +316,10 @@ def car_model_kb():
 # ---------- ОБРАБОТЧИКИ ----------
 @dp.message(Command("start"))
 async def start_cmd(msg: Message):
-    await msg.answer("Привет! Я бот с погодой, советами и оценкой авто. Выберите действие:", reply_markup=main_kb())
+    await msg.answer("Привет! Я бот с погодой, советами и подробной помощью при покупке авто.\nВыберите действие:", reply_markup=main_kb())
 
-# Основные кнопки
-@dp.message(lambda msg: msg.text == "🌤 Погода")
+# обработка кнопок главного меню
+@dp.message(F.text == "🌤 Погода")
 async def weather_now(msg: Message):
     cid = msg.chat.id
     if cid not in user_cities:
@@ -226,7 +328,7 @@ async def weather_now(msg: Message):
     w = await asyncio.to_thread(get_weather, user_cities[cid])
     await msg.answer(format_weather(w), parse_mode="Markdown", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "📅 Прогноз")
+@dp.message(F.text == "📅 Прогноз")
 async def forecast_5(msg: Message):
     cid = msg.chat.id
     if cid not in user_cities:
@@ -235,19 +337,19 @@ async def forecast_5(msg: Message):
     f = await asyncio.to_thread(get_5day_forecast, user_cities[cid])
     await msg.answer(format_forecast(f), parse_mode="Markdown", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "🚗 Советы")
+@dp.message(F.text == "🚗 Советы")
 async def tips(msg: Message):
-    await msg.answer("❄️ Зимой проверьте аккумулятор.\n🌧️ В дождь включите фары.\n🌫️ В туман снизьте скорость.\n⚠️ Гололёд – дистанция больше.", reply_markup=main_kb())
+    await msg.answer("❄️ Зимой проверьте аккумулятор, увеличьте дистанцию.\n🌧️ В дождь включите фары.\n🌫️ В туман снизьте скорость, используйте противотуманки.\n⚠️ Гололёд – избегайте резких движений.", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "🌆 Город")
+@dp.message(F.text == "🌆 Город")
 async def city_menu(msg: Message):
-    await msg.answer("Выберите город или напишите его название:", reply_markup=cities_kb())
+    await msg.answer("Выберите город из списка или напишите его название:", reply_markup=cities_kb())
 
-@dp.message(lambda msg: msg.text == "🔔 Подписка")
+@dp.message(F.text == "🔔 Подписка")
 async def sub_menu(msg: Message):
     await msg.answer("Настройка рассылки:", reply_markup=sub_kb())
 
-@dp.message(lambda msg: msg.text == "✅ Подписаться")
+@dp.message(F.text == "✅ Подписаться")
 async def subscribe(msg: Message):
     global CHAT_ID
     cid = msg.chat.id
@@ -257,7 +359,7 @@ async def subscribe(msg: Message):
     CHAT_ID = str(cid)
     await msg.answer("✅ Вы подписаны на ежедневный прогноз в 08:00", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "❌ Отписаться")
+@dp.message(F.text == "❌ Отписаться")
 async def unsubscribe(msg: Message):
     global CHAT_ID
     cid = msg.chat.id
@@ -267,11 +369,11 @@ async def unsubscribe(msg: Message):
     else:
         await msg.answer("❌ Вы не были подписаны", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "⏰ Время")
+@dp.message(F.text == "⏰ Время")
 async def set_time_prompt(msg: Message):
     await msg.answer("Введите время в формате ЧЧ:ММ (08:00):", reply_markup=back_kb())
 
-@dp.message(lambda msg: msg.text == "📊 Статус")
+@dp.message(F.text == "📊 Статус")
 async def status_sub(msg: Message):
     global CHAT_ID
     cid = msg.chat.id
@@ -282,24 +384,38 @@ async def status_sub(msg: Message):
     else:
         await msg.answer("❌ Подписка не активна", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "⬅️ Назад")
+@dp.message(F.text == "⬅️ Назад")
 async def back(msg: Message):
-    # Если были данные оценки авто – очищаем
     user_car_data.pop(msg.chat.id, None)
     await msg.answer("Главное меню", reply_markup=main_kb())
 
-@dp.message(lambda msg: msg.text == "🚘 Оценить авто")
+# новая кнопка помощи при покупке
+@dp.message(F.text == "🛠 Помощь при покупке")
 async def eval_start(msg: Message):
     user_car_data[msg.chat.id] = {}
     await msg.answer("Шаг 1: Введите **год выпуска** (4 цифры, например 2010):", parse_mode="Markdown", reply_markup=back_kb())
 
-# --- Обработка пошаговой оценки авто ---
+# ---------- ОБРАБОТКА ВЫБОРА ГОРОДА ИЗ КНОПОК (С ФЛАГОМ) ----------
+# Этот обработчик работает точно так же, как работало меню городов вчера
+@dp.message(F.text.startswith(("🇷🇺", "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань", "Омск", "Красноярск", "Владивосток")))
+async def city_button_handler(msg: Message):
+    city_ru = msg.text.strip()
+    city_lat = city_to_latin(city_ru)
+    w = await asyncio.to_thread(get_weather, city_lat)
+    if w['ok']:
+        user_cities[msg.chat.id] = city_lat
+        await msg.answer(f"✅ Город {city_ru} установлен!", reply_markup=main_kb())
+        await msg.answer(format_weather(w), parse_mode="Markdown")
+    else:
+        await msg.answer(f"❌ Город '{city_ru}' не найден. Попробуйте написать на латинице (например, Omsk).", reply_markup=cities_kb())
+
+# ---------- УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (ввод года, пробега, модели, времени, города) ----------
 @dp.message()
-async def handle_car_evaluation(msg: Message):
+async def handle_all(msg: Message):
     cid = msg.chat.id
     text = msg.text.strip()
 
-    # Если пользователь в режиме оценки авто
+    # Режим оценки авто
     if cid in user_car_data:
         data = user_car_data[cid]
         if 'year' not in data:
@@ -323,11 +439,10 @@ async def handle_car_evaluation(msg: Message):
             return
 
         if 'model' not in data:
-            # Если выбрана модель из клавиатуры
-            if text in CARS:
+            if text in CARS_DB:
                 model = text
-                result = evaluate_car(model, data['year'], data['km'])
-                await msg.answer(result, parse_mode="Markdown", reply_markup=main_kb())
+                eval_data = calculate_car_value(model, data['year'], data['km'])
+                await msg.answer(format_car_evaluation(eval_data), parse_mode="Markdown", reply_markup=main_kb())
                 del user_car_data[cid]
             elif text == "⬅️ Назад":
                 del user_car_data[cid]
@@ -335,10 +450,8 @@ async def handle_car_evaluation(msg: Message):
             else:
                 await msg.answer("❌ Модель не найдена. Выберите из списка или нажмите ⬅️ Назад", reply_markup=car_model_kb())
             return
-        return
 
-    # Если не в режиме оценки – обрабатываем как город или другое
-    # Проверяем, не вводят ли время для подписки
+    # Установка времени подписки
     if len(text) == 5 and text[2] == ':' and text[:2].isdigit() and text[3:].isdigit():
         h, m = int(text[:2]), int(text[3:])
         if 0 <= h <= 23 and 0 <= m <= 59:
@@ -346,7 +459,7 @@ async def handle_car_evaluation(msg: Message):
             await msg.answer(f"✅ Время установлено: {text}", reply_markup=sub_kb())
         return
 
-    # Попытка интерпретировать как город
+    # Если ни одно из выше – пробуем интерпретировать как город (ручной ввод)
     city_lat = city_to_latin(text)
     w = await asyncio.to_thread(get_weather, city_lat)
     if w['ok']:
@@ -375,7 +488,7 @@ def schedule_loop():
 # ---------- ЗАПУСК ----------
 async def main():
     threading.Thread(target=schedule_loop, daemon=True).start()
-    print("✅ Бот запущен. Кнопки меню работают, есть оценка авто, город Омск принимается, прогноз с советами.")
+    print("✅ Бот запущен. Кнопки меню работают, выбор города – как вчера, помощь при покупке – подробная.")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
