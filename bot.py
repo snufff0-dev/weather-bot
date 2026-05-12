@@ -30,26 +30,14 @@ logging.basicConfig(level=logging.INFO)
 # ПРЕОБРАЗОВАНИЕ РУССКИХ НАЗВАНИЙ ГОРОДОВ В ЛАТИНИЦУ
 # --------------------------------------------------------------
 RUS_TO_LAT = {
-    'москва': 'Moscow',
-    'санкт-петербург': 'Saint Petersburg',
-    'новосибирск': 'Novosibirsk',
-    'екатеринбург': 'Ekaterinburg',
-    'казань': 'Kazan',
-    'омск': 'Omsk',
-    'красноярск': 'Krasnoyarsk',
-    'владивосток': 'Vladivostok',
-    'нижний новгород': 'Nizhny Novgorod',
-    'челябинск': 'Chelyabinsk',
-    'самара': 'Samara',
-    'ростов-на-дону': 'Rostov-on-Don',
-    'уфа': 'Ufa',
-    'пермь': 'Perm',
-    'воронеж': 'Voronezh',
-    'волгоград': 'Volgograd',
-    'сочи': 'Sochi',
-    'тюмень': 'Tyumen',
-    'иркутск': 'Irkutsk',
-    'хабаровск': 'Khabarovsk'
+    'москва': 'Moscow', 'санкт-петербург': 'Saint Petersburg',
+    'новосибирск': 'Novosibirsk', 'екатеринбург': 'Ekaterinburg',
+    'казань': 'Kazan', 'омск': 'Omsk', 'красноярск': 'Krasnoyarsk',
+    'владивосток': 'Vladivostok', 'нижний новгород': 'Nizhny Novgorod',
+    'челябинск': 'Chelyabinsk', 'самара': 'Samara', 'ростов-на-дону': 'Rostov-on-Don',
+    'уфа': 'Ufa', 'пермь': 'Perm', 'воронеж': 'Voronezh',
+    'волгоград': 'Volgograd', 'сочи': 'Sochi', 'тюмень': 'Tyumen',
+    'иркутск': 'Irkutsk', 'хабаровск': 'Khabarovsk'
 }
 
 def city_to_latin(city_name: str) -> str:
@@ -62,11 +50,10 @@ def city_to_latin(city_name: str) -> str:
         return RUS_TO_LAT[city_lower]
     # Простая транслитерация для других
     translit = {
-        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
-        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
-        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
-        'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
-        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+        'а':'a','б':'b','в':'v','г':'g','д':'d','е':'e','ё':'e','ж':'zh','з':'z',
+        'и':'i','й':'y','к':'k','л':'l','м':'m','н':'n','о':'o','п':'p','р':'r',
+        'с':'s','т':'t','у':'u','ф':'f','х':'kh','ц':'ts','ч':'ch','ш':'sh',
+        'щ':'shch','ъ':'','ы':'y','ь':'','э':'e','ю':'yu','я':'ya'
     }
     result = ''
     for ch in city_lower:
@@ -79,7 +66,7 @@ def city_to_latin(city_name: str) -> str:
     return result.title()
 
 # --------------------------------------------------------------
-# БАЗА ДАННЫХ АВТОМОБИЛЕЙ
+# БАЗА АВТОМОБИЛЕЙ
 # --------------------------------------------------------------
 CARS_DB = {
     'Lada Vesta': {'price_new': 1200000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 7.5},
@@ -116,28 +103,19 @@ CARS_DB = {
 def get_weather(city: str) -> dict:
     try:
         url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        if response.status_code == 200:
-            temp = data['main']['temp']
-            feels_like = data['main']['feels_like']
-            humidity = data['main']['humidity']
-            pressure = data['main']['pressure'] * 0.750062
-            wind_speed = data['wind']['speed']
-            wind_direction = data['wind'].get('deg', 0)
-            weather_desc = data['weather'][0]['description']
-            clouds = data['clouds']['all']
-            visibility = data.get('visibility', 10000) / 1000
-            directions = ['северный','северо-восточный','восточный','юго-восточный',
-                          'южный','юго-западный','западный','северо-западный']
-            wind_dir = directions[int((wind_direction + 22.5) / 45) % 8]
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        if resp.status_code == 200:
             return {
                 'success': True, 'city': city,
-                'temp': temp, 'feels_like': feels_like,
-                'humidity': humidity, 'pressure': pressure,
-                'wind_speed': wind_speed, 'wind_dir': wind_dir,
-                'description': weather_desc, 'clouds': clouds,
-                'visibility': visibility,
+                'temp': data['main']['temp'],
+                'feels_like': data['main']['feels_like'],
+                'humidity': data['main']['humidity'],
+                'pressure': data['main']['pressure'] * 0.750062,
+                'wind_speed': data['wind']['speed'],
+                'description': data['weather'][0]['description'],
+                'clouds': data['clouds']['all'],
+                'visibility': data.get('visibility', 10000)/1000,
                 'time': datetime.now().strftime('%d.%m.%Y %H:%M')
             }
         else:
@@ -148,9 +126,9 @@ def get_weather(city: str) -> dict:
 def get_5day_forecast(city: str) -> dict:
     try:
         url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        if response.status_code == 200:
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+        if resp.status_code == 200:
             daily = {}
             for item in data['list']:
                 dt = datetime.fromtimestamp(item['dt'])
@@ -164,22 +142,19 @@ def get_5day_forecast(city: str) -> dict:
                 daily[key]['descriptions'].append(item['weather'][0]['description'])
                 daily[key]['wind_speeds'].append(item['wind']['speed'])
                 daily[key]['humidity'].append(item['main']['humidity'])
-                if 'rain' in item and item['rain'].get('3h', 0) > 0:
-                    daily[key]['rain'] = True
-                if 'snow' in item and item['snow'].get('3h', 0) > 0:
-                    daily[key]['snow'] = True
+                if 'rain' in item and item['rain'].get('3h', 0) > 0: daily[key]['rain'] = True
+                if 'snow' in item and item['snow'].get('3h', 0) > 0: daily[key]['snow'] = True
             forecasts = []
             for key, day in list(daily.items())[:5]:
                 forecasts.append({
                     'date': day['date'],
                     'temp_max': max(day['temps']),
                     'temp_min': min(day['temps']),
-                    'temp_day': sum(day['temps']) / len(day['temps']),
+                    'temp_day': sum(day['temps'])/len(day['temps']),
                     'description': max(set(day['descriptions']), key=day['descriptions'].count),
                     'wind_speed': max(day['wind_speeds']),
-                    'humidity': sum(day['humidity']) / len(day['humidity']),
-                    'rain': day['rain'],
-                    'snow': day['snow']
+                    'humidity': sum(day['humidity'])/len(day['humidity']),
+                    'rain': day['rain'], 'snow': day['snow']
                 })
             return {'success': True, 'city': city, 'forecasts': forecasts}
         else:
@@ -208,41 +183,34 @@ def get_driver_tips(temp, wind, humidity, desc, rain, snow):
     return "\n".join(tips[:4])
 
 def format_weather_message(weather: dict) -> str:
-    if not weather['success']:
-        return f"❌ {weather['error']}"
-    msg = f"🌍 *ПОГОДА В {weather['city'].upper()}*\n📅 {weather['time']}\n☁️ {weather['description'].capitalize()}\n"
-    msg += f"🌡️ *{weather['temp']:.1f}°C* (ощущается {weather['feels_like']:.1f}°C)\n"
-    msg += f"💧 Влажность: {weather['humidity']}%\n📊 Давление: {weather['pressure']:.1f} мм рт.ст.\n"
-    msg += f"💨 Ветер: {weather['wind_speed']:.1f} м/с, {weather['wind_dir']}\n"
-    msg += f"👁️ Видимость: {weather['visibility']:.1f} км\n☁️ Облачность: {weather['clouds']}%\n\n"
-    msg += f"🚗 *СОВЕТЫ:*\n{get_driver_tips(weather['temp'], weather['wind_speed'], weather['humidity'], weather['description'], 'дождь' in weather['description'], 'снег' in weather['description'])}"
-    return msg
+    if not weather['success']: return f"❌ {weather['error']}"
+    return (f"🌍 *ПОГОДА В {weather['city'].upper()}*\n📅 {weather['time']}\n"
+            f"☁️ {weather['description'].capitalize()}\n"
+            f"🌡️ *{weather['temp']:.1f}°C* (ощущается {weather['feels_like']:.1f}°C)\n"
+            f"💧 Влажность: {weather['humidity']}%\n"
+            f"📊 Давление: {weather['pressure']:.1f} мм рт.ст.\n"
+            f"💨 Ветер: {weather['wind_speed']:.1f} м/с\n"
+            f"👁️ Видимость: {weather['visibility']:.1f} км\n"
+            f"☁️ Облачность: {weather['clouds']}%\n\n"
+            f"🚗 *СОВЕТЫ:*\n{get_driver_tips(weather['temp'], weather['wind_speed'], weather['humidity'], weather['description'], 'дождь' in weather['description'], 'снег' in weather['description'])}")
 
 def format_forecast_message(forecast_data: dict) -> str:
-    if not forecast_data['success']:
-        return f"❌ {forecast_data['error']}"
-    days_ru = {
-        'Monday': 'Понедельник', 'Tuesday': 'Вторник', 'Wednesday': 'Среда',
-        'Thursday': 'Четверг', 'Friday': 'Пятница', 'Saturday': 'Суббота', 'Sunday': 'Воскресенье'
-    }
+    if not forecast_data['success']: return f"❌ {forecast_data['error']}"
+    days_ru = {'Monday':'Понедельник','Tuesday':'Вторник','Wednesday':'Среда','Thursday':'Четверг','Friday':'Пятница','Saturday':'Суббота','Sunday':'Воскресенье'}
     msg = f"📅 *ПРОГНОЗ НА 5 ДНЕЙ - {forecast_data['city'].upper()}*\n" + "━"*30 + "\n\n"
     today = datetime.now().date()
     for day in forecast_data['forecasts']:
         day_date = day['date'].date()
-        eng_day = day['date'].strftime('%A')
-        rus_day = days_ru.get(eng_day, eng_day)
-        if day_date == today:
-            header = "Сегодня"
-        elif day_date == today + timedelta(days=1):
-            header = f"Завтра ({rus_day})"
-        else:
-            header = rus_day
-        msg += f"📌 *{header}* {day_date.strftime('%d.%m')}\n"
-        msg += f"🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C\n"
+        eng = day['date'].strftime('%A')
+        if day_date == today: header = "Сегодня"
+        elif day_date == today + timedelta(days=1): header = f"Завтра ({days_ru.get(eng, eng)})"
+        else: header = days_ru.get(eng, eng)
+        msg += f"📌 *{header}* {day_date.strftime('%d.%m')}\n🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C\n"
         msg += f"☁️ {day['description'].capitalize()}\n💨 Ветер до {day['wind_speed']:.0f} м/с\n"
-        if day.get('rain'): msg += "🌧️ Дожди\n"
-        if day.get('snow'): msg += "🌨️ Снег\n"
-        tips = get_driver_tips(day['temp_day'], day['wind_speed'], day['humidity'], day['description'], day.get('rain', False), day.get('snow', False))
+        if day['rain']: msg += "🌧️ Дожди\n"
+        if day['snow']: msg += "🌨️ Снег\n"
+        # ВАЖНО: добавляем советы водителю
+        tips = get_driver_tips(day['temp_day'], day['wind_speed'], day['humidity'], day['description'], day['rain'], day['snow'])
         msg += f"🚗 *Советы:* {tips}\n\n" + "─"*20 + "\n\n"
     return msg
 
@@ -274,16 +242,11 @@ def calculate_car_value(model: str, year: int, km: int) -> dict:
     final_price = min(final_price, price_new * 1.0)
     final_price = max(final_price, 50000)
     final_price = int(final_price / 1000) * 1000
-    if age <= 5 and km < 80000:
-        condition, icon, verdict = "отличное", "✅", "Практически новый автомобиль. Отличный вариант!"
-    elif age <= 8 and km < 130000:
-        condition, icon, verdict = "хорошее", "🟢", "Хорошее состояние. Рекомендуется диагностика."
-    elif age <= 12 and km < 180000:
-        condition, icon, verdict = "среднее", "⚠️", "Среднее состояние. Требуется осмотр специалиста."
-    elif age <= 18 and km < 250000:
-        condition, icon, verdict = "выше среднего износа", "🔴", "Возраст сказывается, но ещё послужит."
-    else:
-        condition, icon, verdict = "высокий износ", "❌", "Автомобиль возрастной. Для опытных."
+    if age <= 5 and km < 80000: condition, icon, verdict = "отличное", "✅", "Практически новый автомобиль. Отличный вариант!"
+    elif age <= 8 and km < 130000: condition, icon, verdict = "хорошее", "🟢", "Хорошее состояние. Рекомендуется диагностика."
+    elif age <= 12 and km < 180000: condition, icon, verdict = "среднее", "⚠️", "Среднее состояние. Требуется осмотр специалиста."
+    elif age <= 18 and km < 250000: condition, icon, verdict = "выше среднего износа", "🔴", "Возраст сказывается, но ещё послужит."
+    else: condition, icon, verdict = "высокий износ", "❌", "Автомобиль возрастной. Для опытных."
     recommendations = []
     if age > 7: recommendations.append("🔧 Проверить кузов на коррозию")
     if km > 120000: recommendations.append("⚙️ Диагностика двигателя и коробки")
@@ -301,7 +264,7 @@ def calculate_car_value(model: str, year: int, km: int) -> dict:
     }
 
 def format_car_evaluation(eval_data: dict) -> str:
-    msg = "🚗 *ОЦЕНКА АВТОМОБИЛЯ*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+    msg = f"🚗 *ОЦЕНКА АВТОМОБИЛЯ*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
     msg += f"📋 *{eval_data['model']}*\n• Год: {eval_data['year']} ({eval_data['age']} лет)\n• Пробег: {eval_data['km']:,} км\n\n"
     msg += f"💰 *СТОИМОСТЬ:*\n• Новая цена: {eval_data['price_new']:,} ₽\n• Рыночная цена: *{eval_data['current_price']:,} ₽*\n"
     msg += f"• Износ по годам: {eval_data['year_depreciation']}%\n• Износ по пробегу: {eval_data['km_depreciation']}%\n\n"
@@ -322,8 +285,7 @@ def get_main_keyboard():
             [KeyboardButton(text="🚗 Советы водителю"), KeyboardButton(text="🚘 Оценить авто")],
             [KeyboardButton(text="⚙️ Установить город"), KeyboardButton(text="🔔 Подписка")],
             [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ О боте")]
-        ],
-        resize_keyboard=True
+        ], resize_keyboard=True
     )
 
 def get_cities_keyboard():
@@ -334,8 +296,7 @@ def get_cities_keyboard():
             [KeyboardButton(text="🇷🇺 Казань"), KeyboardButton(text="🇷🇺 Омск")],
             [KeyboardButton(text="🇷🇺 Красноярск"), KeyboardButton(text="🇷🇺 Владивосток")],
             [KeyboardButton(text="⬅️ Назад в меню")]
-        ],
-        resize_keyboard=True
+        ], resize_keyboard=True
     )
 
 def get_weather_keyboard():
@@ -343,8 +304,7 @@ def get_weather_keyboard():
         keyboard=[
             [KeyboardButton(text="🔄 Обновить погоду"), KeyboardButton(text="📅 Прогноз на 5 дней")],
             [KeyboardButton(text="🌤 Другой город"), KeyboardButton(text="⬅️ Главное меню")]
-        ],
-        resize_keyboard=True
+        ], resize_keyboard=True
     )
 
 def get_subscription_keyboard():
@@ -353,14 +313,12 @@ def get_subscription_keyboard():
             [KeyboardButton(text="✅ Подписаться"), KeyboardButton(text="❌ Отписаться")],
             [KeyboardButton(text="⏰ Выбрать время"), KeyboardButton(text="📊 Статус подписки")],
             [KeyboardButton(text="⬅️ Главное меню")]
-        ],
-        resize_keyboard=True
+        ], resize_keyboard=True
     )
 
 def get_back_keyboard():
     return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="⬅️ Назад в меню")]],
-        resize_keyboard=True
+        keyboard=[[KeyboardButton(text="⬅️ Назад в меню")]], resize_keyboard=True
     )
 
 def get_car_model_keyboard():
@@ -371,8 +329,7 @@ def get_car_model_keyboard():
             [KeyboardButton(text="🇷🇺 Lada Granta"), KeyboardButton(text="🇷🇺 Lada Vesta")],
             [KeyboardButton(text="🇪🇺 Volkswagen Polo"), KeyboardButton(text="🇨🇳 Chery Tiggo T11")],
             [KeyboardButton(text="🚘 Другие модели"), KeyboardButton(text="⬅️ Назад в меню")]
-        ],
-        resize_keyboard=True
+        ], resize_keyboard=True
     )
 
 def get_other_models_keyboard():
@@ -383,8 +340,7 @@ def get_other_models_keyboard():
             [KeyboardButton(text="🇩🇪 BMW 3 series"), KeyboardButton(text="🇩🇪 Audi A4")],
             [KeyboardButton(text="🇺🇸 Chevrolet Lacetti"), KeyboardButton(text="🇨🇳 Geely Coolray")],
             [KeyboardButton(text="⬅️ Назад к моделям")]
-        ],
-        resize_keyboard=True
+        ], resize_keyboard=True
     )
 
 # --------------------------------------------------------------
@@ -396,10 +352,23 @@ async def cmd_start(message: Message):
         "👋 *Добро пожаловать в AutoWeatherBot!*\n\n"
         "🚗 Я даю погоду с советами и оцениваю авто.\n"
         "📊 База: более 30 моделей.\n"
-        "🌍 Города можно вводить на русском (автоматически переведу).\n\n"
+        "🌍 Города можно вводить на русском – бот сам переведёт.\n\n"
         "👇 Выберите действие:",
         parse_mode="Markdown", reply_markup=get_main_keyboard()
     )
+
+# ----- Явный обработчик для кнопок городов (с флагом и без) -----
+@dp.message(F.text.startswith(("🇷🇺", "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань", "Омск", "Красноярск", "Владивосток")))
+async def handle_city_button(message: Message):
+    city = message.text.strip()
+    city_lat = city_to_latin(city)
+    cid = message.chat.id
+    w = await asyncio.to_thread(get_weather, city_lat)
+    if w['success']:
+        user_cities[cid] = city_lat
+        await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
+    else:
+        await message.answer(f"❌ Город '{city}' не найден. Попробуйте написать на латинице (например, Omsk).", reply_markup=get_main_keyboard())
 
 @dp.message(F.text == "🌤 Погода сейчас")
 async def weather_now(message: Message):
@@ -447,14 +416,14 @@ async def evaluate_car_start(message: Message):
     )
 
 # --------------------------------------------------------------
-# УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (все сообщения, включая кнопки городов)
+# УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (все остальные сообщения)
 # --------------------------------------------------------------
 @dp.message()
 async def handle_all_text(message: Message):
     cid = message.chat.id
     text = message.text.strip()
 
-    # ----- РЕЖИМ ОЦЕНКИ АВТО -----
+    # Режим оценки авто
     if cid in user_car_data:
         data = user_car_data[cid]
         if 'year' not in data:
@@ -514,7 +483,7 @@ async def handle_all_text(message: Message):
                     await message.answer("❌ Модель не найдена. Выберите из списка или уточните название.", reply_markup=get_car_model_keyboard())
             return
 
-    # ----- КОМАНДА УСТАНОВКИ ГОРОДА -----
+    # ---- КОМАНДА УСТАНОВКИ ГОРОДА ----
     if text.startswith("/setcity"):
         city = text.replace("/setcity", "").strip()
         if city:
@@ -529,7 +498,7 @@ async def handle_all_text(message: Message):
             await message.answer("Напишите: /setcity Москва")
         return
 
-    # ----- ВВОД ВРЕМЕНИ ДЛЯ ПОДПИСКИ -----
+    # ---- ВВОД ВРЕМЕНИ ДЛЯ ПОДПИСКИ ----
     if len(text) == 5 and text[2] == ':' and text[:2].isdigit() and text[3:].isdigit():
         h, m = int(text[:2]), int(text[3:])
         if 0 <= h <= 23 and 0 <= m <= 59:
@@ -537,7 +506,7 @@ async def handle_all_text(message: Message):
             await message.answer(f"✅ Время подписки: {text}", parse_mode="Markdown", reply_markup=get_subscription_keyboard())
             return
 
-    # ----- ЛЮБОЙ ТЕКСТ (ВКЛЮЧАЯ КНОПКИ ГОРОДОВ) - ПЫТАЕМСЯ НАЙТИ ГОРОД -----
+    # ---- ПОИСК ГОРОДА (если не распознано выше) ----
     city_lat = city_to_latin(text)
     w = await asyncio.to_thread(get_weather, city_lat)
     if w['success']:
@@ -638,8 +607,8 @@ async def help_cmd(message: Message):
 @dp.message(F.text == "ℹ️ О боте")
 async def about_bot(message: Message):
     await message.answer(
-        "ℹ️ *О боте*\nВерсия 4.4\nПогода + оценка авто\nРеалистичные рыночные цены\n"
-        "🌍 Поддержка русских названий городов (включая кнопки)\n"
+        "ℹ️ *О боте*\nВерсия 4.5\nПогода + оценка авто\nРеалистичные рыночные цены\n"
+        "🌍 Поддержка русских названий городов (кнопки работают)\n"
         "📅 Прогноз на 5 дней включает советы водителю\n"
         "База из 30+ моделей авто",
         parse_mode="Markdown", reply_markup=get_back_keyboard()
@@ -669,9 +638,9 @@ async def main():
     schedule.every().day.at("08:00").do(send_daily_weather)
     threading.Thread(target=run_schedule, daemon=True).start()
     print("\n" + "="*60)
-    print("✅ AUTO-WEATHER-BOT 4.4 ЗАПУЩЕН")
+    print("✅ AUTO-WEATHER-BOT 4.5 ЗАПУЩЕН")
     print("📅 Прогноз на 5 дней включает советы водителю")
-    print("🌍 Русские названия городов (и кнопки) автоматически переводятся")
+    print("🌍 Кнопки с городами работают, русские названия переводятся")
     print("💰 Оценка авто – реалистичные рыночные цены")
     print("="*60 + "\n")
     await dp.start_polling(bot)
