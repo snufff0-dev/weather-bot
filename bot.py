@@ -31,13 +31,12 @@ RUS_TO_LAT = {
 }
 
 def city_to_latin(name: str) -> str:
-    # убираем флаг, если есть
     if name.startswith('🇷🇺 '):
         name = name[4:]
     low = name.strip().lower()
     if low in RUS_TO_LAT:
         return RUS_TO_LAT[low]
-    return name  # если не нашли, оставляем как есть (латиница)
+    return name
 
 # ---------- ФУНКЦИИ ПОГОДЫ ----------
 def get_weather(city: str):
@@ -215,7 +214,8 @@ async def subscribe(msg: Message):
 @dp.message(lambda msg: msg.text == "❌ Отписаться")
 async def unsubscribe(msg: Message):
     global CHAT_ID
-    if CHAT_ID and int(CHAT_ID) == msg.chat.id:
+    cid = msg.chat.id
+    if CHAT_ID and int(CHAT_ID) == cid:
         CHAT_ID = None
         await msg.answer("❌ Вы отписались", reply_markup=main_kb())
     else:
@@ -228,9 +228,10 @@ async def set_time_prompt(msg: Message):
 @dp.message(lambda msg: msg.text == "📊 Статус")
 async def status_sub(msg: Message):
     global CHAT_ID
-    if CHAT_ID and int(CHAT_ID) == msg.chat.id:
-        city = user_cities.get(msg.chat.id, "не задан")
-        t = user_subscription_time.get(msg.chat.id, "08:00")
+    cid = msg.chat.id
+    if CHAT_ID and int(CHAT_ID) == cid:
+        city = user_cities.get(cid, "не задан")
+        t = user_subscription_time.get(cid, "08:00")
         await msg.answer(f"✅ Подписка активна\nГород: {city}\nВремя: {t}", reply_markup=main_kb())
     else:
         await msg.answer("❌ Подписка не активна", reply_markup=main_kb())
