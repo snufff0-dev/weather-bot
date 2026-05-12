@@ -10,6 +10,7 @@ from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 import requests
 import schedule
+import re
 
 load_dotenv()
 
@@ -22,12 +23,62 @@ dp = Dispatcher()
 
 user_cities = {}
 user_subscription_time = {}
-user_car_data = {}           # временное хранилище для оценки авто
+user_car_data = {}
 
 logging.basicConfig(level=logging.INFO)
 
 # --------------------------------------------------------------
-# БАЗА ДАННЫХ АВТОМОБИЛЕЙ (добавьте свои модели при необходимости)
+# ПРЕОБРАЗОВАНИЕ РУССКИХ НАЗВАНИЙ ГОРОДОВ В ЛАТИНИЦУ
+# --------------------------------------------------------------
+RUS_TO_LAT = {
+    'москва': 'Moscow',
+    'санкт-петербург': 'Saint Petersburg',
+    'новосибирск': 'Novosibirsk',
+    'екатеринбург': 'Ekaterinburg',
+    'казань': 'Kazan',
+    'омск': 'Omsk',
+    'красноярск': 'Krasnoyarsk',
+    'владивосток': 'Vladivostok',
+    'нижний новгород': 'Nizhny Novgorod',
+    'челябинск': 'Chelyabinsk',
+    'самара': 'Samara',
+    'ростов-на-дону': 'Rostov-on-Don',
+    'уфа': 'Ufa',
+    'пермь': 'Perm',
+    'воронеж': 'Voronezh',
+    'волгоград': 'Volgograd',
+    'сочи': 'Sochi',
+    'тюмень': 'Tyumen',
+    'иркутск': 'Irkutsk',
+    'хабаровск': 'Khabarovsk'
+}
+
+def city_to_latin(city_name: str) -> str:
+    """Преобразует русское название города в латиницу"""
+    city_lower = city_name.lower().strip()
+    if city_lower in RUS_TO_LAT:
+        return RUS_TO_LAT[city_lower]
+    # Если нет в словаре, пробуем простую транслитерацию
+    # Упрощённая версия для коротких названий
+    translit = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+        'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+        'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+        'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+        'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    }
+    result = ''
+    for ch in city_lower:
+        if ch in translit:
+            result += translit[ch]
+        elif ch == ' ':
+            result += ' '
+        else:
+            result += ch
+    return result.title()
+
+# --------------------------------------------------------------
+# БАЗА ДАННЫХ АВТОМОБИЛЕЙ
 # --------------------------------------------------------------
 CARS_DB = {
     'Lada Vesta': {'price_new': 1200000, 'reliability': 70, 'parts_cost': 'низкая', 'fuel': 7.5},
@@ -59,7 +110,7 @@ CARS_DB = {
 }
 
 # --------------------------------------------------------------
-# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ ПОГОДЫ
+# ФУНКЦИИ ПОГОДЫ
 # --------------------------------------------------------------
 def get_weather(city: str) -> dict:
     """Текущая погода (синхронно)"""
@@ -95,7 +146,7 @@ def get_weather(city: str) -> dict:
         return {'success': False, 'error': f'Ошибка: {e}'}
 
 def get_5day_forecast(city: str) -> dict:
-    """Прогноз на 5 дней (синхронно)"""
+    """Прогноз на 5 дней с полными данными для советов"""
     try:
         url = f"http://api.openweathermap.org/data/2.5/forecast?q={city}&appid={WEATHER_API_KEY}&units=metric&lang=ru"
         response = requests.get(url, timeout=10)
@@ -124,7 +175,7 @@ def get_5day_forecast(city: str) -> dict:
                     'date': day['date'],
                     'temp_max': max(day['temps']),
                     'temp_min': min(day['temps']),
-                    'temp_day': sum(day['temps']) / len(day['temps']),
+                    'temp_day': sum(day['temps']) / len(day['temps']),  # средняя за день
                     'description': max(set(day['descriptions']), key=day['descriptions'].count),
                     'wind_speed': max(day['wind_speeds']),
                     'humidity': sum(day['humidity']) / len(day['humidity']),
@@ -138,7 +189,7 @@ def get_5day_forecast(city: str) -> dict:
         return {'success': False, 'error': f'Ошибка: {e}'}
 
 def get_driver_tips(temp, wind, humidity, desc, rain, snow):
-    """Советы водителю на основе погоды (используется и в текущей погоде, и в прогнозе)"""
+    """Советы водителю на основе погоды"""
     tips = []
     if temp < -30: tips.append("❄️❄️ ЭКСТРЕМАЛЬНЫЙ МОРОЗ: не выезжай без крайней необходимости")
     elif temp < -20: tips.append("❄️ Сильный мороз: прогревай 10-15 мин, проверь аккумулятор")
@@ -150,11 +201,11 @@ def get_driver_tips(temp, wind, humidity, desc, rain, snow):
     if wind > 20: tips.append("💨 УРАГАН: будь осторожен на мостах")
     elif wind > 15: tips.append("💨 Очень сильный ветер: крепче держи руль")
     elif wind > 10: tips.append("💨 Сильный ветер: внимательней при обгоне фур")
-    if rain: tips.append("🌧️ ДОЖДЬ: включи фары, дистанция ×2")
-    if snow: tips.append("🌨️ СНЕГОПАД: проверь резину, чисти снег")
+    if rain: tips.append("🌧️ ДОЖДЬ: включи фары, дистанция ×2, избегай луж")
+    if snow: tips.append("🌨️ СНЕГОПАД: проверь резину, чисти снег с крыши")
     if 'гроза' in desc: tips.append("⛈️ ГРОЗА: пережди в безопасном месте")
     if 'туман' in desc: tips.append("🌫️ ТУМАН: противотуманки, снизь скорость")
-    if humidity > 85: tips.append("💧 Высокая влажность: стекла могут потеть")
+    if humidity > 85: tips.append("💧 Высокая влажность: стекла могут потеть, используй кондиционер")
     if not tips: tips.append("✅ Погода благоприятная, хорошей дороги!")
     return "\n".join(tips[:4])
 
@@ -183,7 +234,7 @@ def format_forecast_message(forecast_data: dict) -> str:
     msg += "━" * 30 + "\n\n"
     today = datetime.now().date()
     
-    for i, day in enumerate(forecast_data['forecasts']):
+    for day in forecast_data['forecasts']:
         day_date = day['date'].date()
         eng_day = day['date'].strftime('%A')
         rus_day = days_ru.get(eng_day, eng_day)
@@ -198,20 +249,20 @@ def format_forecast_message(forecast_data: dict) -> str:
         msg += f"📌 *{header}* {day_date.strftime('%d.%m')}\n"
         msg += f"🌡️ {day['temp_min']:.0f}°C ~ {day['temp_max']:.0f}°C\n"
         msg += f"☁️ {day['description'].capitalize()}\n💨 Ветер до {day['wind_speed']:.0f} м/с\n"
-        if day['rain']: msg += "🌧️ Дожди\n"
-        if day['snow']: msg += "🌨️ Снег\n"
+        if day.get('rain'): msg += "🌧️ Дожди\n"
+        if day.get('snow'): msg += "🌨️ Снег\n"
         
-        # ---- СОВЕТЫ ВОДИТЕЛЮ (обязательно) ----
+        # Советы водителю — обязательно!
         tips = get_driver_tips(
             day['temp_day'], day['wind_speed'], day['humidity'],
-            day['description'], day['rain'], day['snow']
+            day['description'], day.get('rain', False), day.get('snow', False)
         )
         msg += f"🚗 *Советы:* {tips}\n\n"
         msg += "─" * 20 + "\n\n"
     return msg
 
 # --------------------------------------------------------------
-# ОЦЕНКА АВТОМОБИЛЕЙ (рыночная цена с учётом реалий 2025)
+# ОЦЕНКА АВТОМОБИЛЕЙ (рыночная цена)
 # --------------------------------------------------------------
 def calculate_car_value(model: str, year: int, km: int) -> dict:
     current_year = datetime.now().year
@@ -219,7 +270,6 @@ def calculate_car_value(model: str, year: int, km: int) -> dict:
     specs = CARS_DB.get(model, {'price_new': 1000000, 'reliability': 70, 'parts_cost': 'средняя', 'fuel': 8.0})
     price_new = specs['price_new']
 
-    # Мягкий износ (рынок завышен)
     year_depr = min(0.40, age * 0.05)
     km_depr = min(0.25, (km / 10000) * 0.003)
     total_depr = max(year_depr, km_depr)
@@ -232,7 +282,7 @@ def calculate_car_value(model: str, year: int, km: int) -> dict:
     elif rel >= 60: rel_mult = 0.90
     else: rel_mult = 0.80
 
-    market_mult = 1.65   # эмпирический коэффициент, приближающий к реальным объявлениям
+    market_mult = 1.65
     if age <= 3: age_mult = 1.0
     elif age <= 7: age_mult = 0.95
     elif age <= 12: age_mult = 0.85
@@ -244,7 +294,6 @@ def calculate_car_value(model: str, year: int, km: int) -> dict:
     final_price = max(final_price, 50000)
     final_price = int(final_price / 1000) * 1000
 
-    # Оценка состояния
     if age <= 5 and km < 80000:
         condition, icon, verdict = "отличное", "✅", "Практически новый автомобиль. Отличный вариант!"
     elif age <= 8 and km < 130000:
@@ -286,7 +335,7 @@ def format_car_evaluation(eval_data: dict) -> str:
     return msg
 
 # --------------------------------------------------------------
-# КЛАВИАТУРЫ (все кнопки)
+# КЛАВИАТУРЫ
 # --------------------------------------------------------------
 def get_main_keyboard():
     return ReplyKeyboardMarkup(
@@ -361,14 +410,16 @@ def get_other_models_keyboard():
     )
 
 # --------------------------------------------------------------
-# ОБРАБОТЧИКИ КОМАНД И СООБЩЕНИЙ
+# ОБРАБОТЧИКИ
 # --------------------------------------------------------------
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
     await message.answer(
         "👋 *Добро пожаловать в AutoWeatherBot!*\n\n"
         "🚗 Я даю погоду с советами и оцениваю авто.\n"
-        "📊 База: более 30 моделей.\n\n👇 Выберите действие:",
+        "📊 База: более 30 моделей.\n"
+        "🌍 Города можно вводить на русском (автоматически переведу).\n\n"
+        "👇 Выберите действие:",
         parse_mode="Markdown", reply_markup=get_main_keyboard()
     )
 
@@ -388,7 +439,7 @@ async def forecast_5days(message: Message):
     if cid not in user_cities:
         await message.answer("🌆 Сначала установите город!", reply_markup=get_cities_keyboard())
         return
-    await message.answer("🔍 Получаю прогноз...", parse_mode="Markdown")
+    await message.answer("🔍 Получаю прогноз на 5 дней...", parse_mode="Markdown")
     f = await asyncio.to_thread(get_5day_forecast, user_cities[cid])
     await message.answer(format_forecast_message(f), parse_mode="Markdown", reply_markup=get_weather_keyboard())
 
@@ -406,7 +457,7 @@ async def driver_tips(message: Message):
 
 @dp.message(F.text == "⚙️ Установить город")
 async def set_city_prompt(message: Message):
-    await message.answer("🌆 Напишите название города (например: Москва, Омск).\nМожно на русском или латинице.", parse_mode="Markdown", reply_markup=get_back_keyboard())
+    await message.answer("🌆 Напишите название города на русском или английском.\nНапример: Омск, Omsk, Москва", parse_mode="Markdown", reply_markup=get_back_keyboard())
 
 @dp.message(F.text == "🚘 Оценить авто")
 async def evaluate_car_start(message: Message):
@@ -418,7 +469,7 @@ async def evaluate_car_start(message: Message):
     )
 
 # --------------------------------------------------------------
-# УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК (оценка авто, /setcity, время, город)
+# УНИВЕРСАЛЬНЫЙ ОБРАБОТЧИК
 # --------------------------------------------------------------
 @dp.message()
 async def handle_all_text(message: Message):
@@ -475,7 +526,6 @@ async def handle_all_text(message: Message):
                 await message.answer("🔹 Главное меню", parse_mode="Markdown", reply_markup=get_main_keyboard())
                 del user_car_data[cid]
             else:
-                # поиск по части названия
                 found = next((car for car in CARS_DB if text.lower() in car.lower()), None)
                 if found:
                     data['model'] = found
@@ -490,24 +540,13 @@ async def handle_all_text(message: Message):
     if text.startswith("/setcity"):
         city = text.replace("/setcity", "").strip()
         if city:
-            # Пробуем латиницу для русских названий
-            city_lat = city
-            if city.lower() == "омск":
-                city_lat = "Omsk"
-            elif city.lower() == "москва":
-                city_lat = "Moscow"
-            elif city.lower() == "санкт-петербург":
-                city_lat = "Saint Petersburg"
-            elif city.lower() == "новосибирск":
-                city_lat = "Novosibirsk"
-            elif city.lower() == "екатеринбург":
-                city_lat = "Ekaterinburg"
+            city_lat = city_to_latin(city)
             w = await asyncio.to_thread(get_weather, city_lat)
             if w['success']:
-                user_cities[cid] = city_lat if w['city'] != city else city
+                user_cities[cid] = city_lat
                 await message.answer(f"✅ Город {city} установлен!", reply_markup=get_main_keyboard())
             else:
-                await message.answer(f"❌ Город '{city}' не найден. Попробуйте на латинице.")
+                await message.answer(f"❌ Город '{city}' не найден. Попробуйте написать на латинице (например, Omsk).")
         else:
             await message.answer("Напишите: /setcity Москва")
         return
@@ -520,27 +559,16 @@ async def handle_all_text(message: Message):
             await message.answer(f"✅ Время подписки: {text}", parse_mode="Markdown", reply_markup=get_subscription_keyboard())
             return
 
-    # ----- ПОИСК ГОРОДА ДЛЯ ПОГОДЫ (с поддержкой латиницы) -----
-    city_test = text
-    if text.lower() == "омск":
-        city_test = "Omsk"
-    elif text.lower() == "москва":
-        city_test = "Moscow"
-    elif text.lower() == "санкт-петербург":
-        city_test = "Saint Petersburg"
-    elif text.lower() == "новосибирск":
-        city_test = "Novosibirsk"
-    elif text.lower() == "екатеринбург":
-        city_test = "Ekaterinburg"
-
-    w = await asyncio.to_thread(get_weather, city_test)
+    # ----- ПОИСК ГОРОДА ДЛЯ ПОГОДЫ (с преобразованием) -----
+    city_lat = city_to_latin(text)
+    w = await asyncio.to_thread(get_weather, city_lat)
     if w['success']:
-        user_cities[cid] = city_test if w['city'] != text else text
+        user_cities[cid] = city_lat
         await message.answer(format_weather_message(w), parse_mode="Markdown", reply_markup=get_weather_keyboard())
     else:
         await message.answer(
             f"❌ Город '{text}' не найден.\n\n"
-            "• Напишите город на латинице (например, Omsk)\n"
+            "• Попробуйте написать на латинице (Omsk, Moscow)\n"
             "• Или используйте /setcity Москва\n"
             "• Для оценки авто нажмите 🚘 Оценить авто",
             reply_markup=get_main_keyboard()
@@ -623,7 +651,7 @@ async def help_cmd(message: Message):
         "📅 Прогноз на 5 дней – с советами водителю\n"
         "🚗 Советы водителю – общие рекомендации\n"
         "🚘 Оценить авто – год, пробег, модель → рыночная цена\n"
-        "⚙️ Установить город\n"
+        "⚙️ Установить город – можно на русском\n"
         "🔔 Подписка – ежедневный прогноз\n\n"
         "Команды: /start, /setcity Москва",
         parse_mode="Markdown", reply_markup=get_main_keyboard()
@@ -632,13 +660,14 @@ async def help_cmd(message: Message):
 @dp.message(F.text == "ℹ️ О боте")
 async def about_bot(message: Message):
     await message.answer(
-        "ℹ️ *О боте*\nВерсия 4.2\nПогода + оценка авто\nРеалистичные рыночные цены\nБаза из 30+ моделей\n\n"
-        "⚠️ Если город не находится, попробуйте написать на латинице (Omsk, Moscow).",
+        "ℹ️ *О боте*\nВерсия 4.3\nПогода + оценка авто\nРеалистичные рыночные цены\n"
+        "🌍 Поддержка русских названий городов\n📅 Прогноз на 5 дней включает советы водителю\n"
+        "База из 30+ моделей авто",
         parse_mode="Markdown", reply_markup=get_back_keyboard()
     )
 
 # --------------------------------------------------------------
-# ЕЖЕДНЕВНАЯ РАССЫЛКА (прогноз на 5 дней с советами)
+# ЕЖЕДНЕВНАЯ РАССЫЛКА (прогноз с советами)
 # --------------------------------------------------------------
 def send_daily_weather():
     if not CHAT_ID:
@@ -661,8 +690,9 @@ async def main():
     schedule.every().day.at("08:00").do(send_daily_weather)
     threading.Thread(target=run_schedule, daemon=True).start()
     print("\n" + "="*60)
-    print("✅ AUTO-WEATHER-BOT 4.2 ЗАПУЩЕН")
+    print("✅ AUTO-WEATHER-BOT 4.3 ЗАПУЩЕН")
     print("📅 Прогноз на 5 дней включает советы водителю")
+    print("🌍 Русские названия городов автоматически переводятся в латиницу")
     print("💰 Оценка авто – реалистичные рыночные цены")
     print("="*60 + "\n")
     await dp.start_polling(bot)
