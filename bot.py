@@ -362,6 +362,100 @@ async def broadcast_cmd(msg: Message):
             pass
     await msg.answer(f"✅ Отправлено {count} пользователям.")
 
+# ---------- АДМИНИСТРАТИВНЫЕ КОМАНДЫ ДЛЯ УПРАВЛЕНИЯ ПОДПИСКАМИ ----------
+@dp.message(Command("stats"))
+async def show_stats(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Только для администратора.")
+        return
+    
+    total = len(user_cities)
+    subscribed = sum(1 for uid in user_cities if CHAT_ID and int(CHAT_ID) == uid)
+    
+    await message.answer(
+        f"📊 *Статистика бота*\n\n"
+        f"👥 Всего пользователей: {total}\n"
+        f"🔔 Подписано на рассылку: {subscribed}\n"
+        f"📁 Файл данных: {USERS_FILE}\n"
+        f"💾 Размер файла: {os.path.getsize(USERS_FILE) if os.path.exists(USERS_FILE) else 0} байт",
+        parse_mode="Markdown"
+    )
+
+@dp.message(Command("users_list"))
+async def users_list(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Только для администратора.")
+        return
+    
+    if not user_cities:
+        await message.answer("📭 Список пользователей пуст.")
+        return
+    
+    user_list = []
+    for i, (uid, city) in enumerate(list(user_cities.items())[:20]):
+        sub_time = user_subscription_time.get(uid, "не подписан")
+        user_list.append(f"{i+1}. ID: `{uid}`, город: {city}, рассылка: {sub_time}")
+    
+    msg = "👥 *Список пользователей (первые 20):*\n\n" + "\n".join(user_list)
+    if len(user_cities) > 20:
+        msg += f"\n\n... и ещё {len(user_cities) - 20} пользователей."
+    
+    await message.answer(msg, parse_mode="Markdown")
+
+@dp.message(Command("unsubscribe_user"))
+async def unsubscribe_user(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Только для администратора.")
+        return
+    
+    parts = message.text.split()
+    if len(parts) != 2 or not parts[1].isdigit():
+        await message.answer("Формат: /unsubscribe_user <user_id>")
+        return
+    
+    uid = parts[1]
+    global CHAT_ID
+    
+    if uid in user_cities:
+        if CHAT_ID == uid:
+            CHAT_ID = None
+        del user_cities[uid]
+        if uid in user_subscription_time:
+            del user_subscription_time[uid]
+        save_users(user_cities, user_subscription_time)
+        await message.answer(f"✅ Пользователь {uid} отписан и удалён из базы.")
+    else:
+        await message.answer(f"❌ Пользователь {uid} не найден в базе.")
+
+@dp.message(Command("check_storage"))
+async def check_storage(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Только для администратора.")
+        return
+    
+    report = []
+    if os.path.exists(USERS_FILE):
+        report.append(f"✅ Файл существует. Размер: {os.path.getsize(USERS_FILE)} байт.")
+        try:
+            with open(USERS_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            report.append(f"👥 Сохранено пользователей: {len(data.get('user_cities', {}))}")
+            report.append(f"📌 Версия в файле: {data.get('version', 'нет')}")
+        except Exception as e:
+            report.append(f"⚠️ Ошибка чтения: {e}")
+    else:
+        report.append("❌ Файл НЕ СУЩЕСТВУЕТ.")
+    
+    test_file = os.path.join(SHARED_DIR, "test_write.txt")
+    try:
+        with open(test_file, 'w') as f:
+            f.write("test")
+        os.remove(test_file)
+        report.append("✅ Права на запись в /app/shared есть.")
+    except Exception as e:
+        report.append(f"❌ НЕТ ПРАВ НА ЗАПИСЬ: {e}")
+    
+    await message.answer("\n".join(report), parse_mode="Markdown")
 # ---------- ПОГОДА ----------
 @dp.message(F.text == "🌤 Погода сейчас")
 async def weather_now(msg: Message):
