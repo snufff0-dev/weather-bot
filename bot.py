@@ -20,7 +20,7 @@ WEATHER_API_KEY = os.getenv('WEATHER_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 TRONK_API_KEY = os.getenv('TRONK_API_KEY', '')   # API-ключ для сервиса TronK
 
-BOT_VERSION = "2.5"
+BOT_VERSION = "2.6"
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ (BOTHOST) ====================
 SHARED_DIR = "/app/shared"
