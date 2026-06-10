@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "1.1"   # при обновлении меняем цифру
+BOT_VERSION = "1.2"   # при обновлении меняем цифру
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ (ДЛЯ BOTHOST) ====================
 SHARED_DIR = "/app/shared"
@@ -70,15 +70,16 @@ def main_kb():
     )
 
 # ==================== ФУНКЦИИ ЗАПРОСОВ К TRONK ====================
-async def quick_check(identifier: str, is_vin: bool) -> str:
-    """Быстрая проверка через reportnewcheck.ashx"""
+async def quick_check(identifier: str) -> str:
     url = "https://data.tronk.info/reportnewcheck.ashx"
-    params = {"key": TRONK_API_KEY}
-    if is_vin:
-        params["vin"] = identifier
-    else:
-        params["gosnumber"] = identifier
-
+    params = {
+        "key": TRONK_API_KEY,
+        "vin": identifier if len(identifier) == 17 else None,
+        "gosnumber": identifier if len(identifier) != 17 else None,
+        "frame": None,  # если нужно
+    }
+    # Убираем None значения
+    params = {k: v for k, v in params.items() if v is not None}
     try:
         r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
         data = r.json()
@@ -96,11 +97,11 @@ async def quick_check(identifier: str, is_vin: bool) -> str:
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-async def full_report(identifier: str, is_vin: bool) -> str:
-    """Полный отчёт через reportrequest.ashx (очередь + getstatus + getlink)"""
+async def full_report(identifier: str) -> str:
     base_url = "https://data.tronk.info/reportrequest.ashx"
+    # Шаг 1: Постановка в очередь (обязательно mode=setqueue)
     params = {"key": TRONK_API_KEY, "mode": "setqueue"}
-    if is_vin:
+    if len(identifier) == 17:
         params["vin"] = identifier
     else:
         params["gosnumber"] = identifier
