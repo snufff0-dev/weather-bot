@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "1.2"   # при обновлении меняем цифру
+BOT_VERSION = "2.0"   # при обновлении меняем цифру
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ (ДЛЯ BOTHOST) ====================
 SHARED_DIR = "/app/shared"
@@ -69,17 +69,53 @@ def main_kb():
         resize_keyboard=True
     )
 
+# ==================== ТРАНСЛИТЕРАЦИЯ РУССКИХ БУКВ В ГОСНОМЕРЕ ====================
+RUS_TO_LAT = {
+    'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M',
+    'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
+    'У': 'Y', 'Х': 'X'
+}
+
+def transliterate_gosnumber(number: str) -> str:
+    """Заменяет русские буквы в госномере на латинские."""
+    result = []
+    for ch in number.upper():
+        if ch in RUS_TO_LAT:
+            result.append(RUS_TO_LAT[ch])
+        else:
+            result.append(ch)
+    return ''.join(result)
+
 # ==================== ФУНКЦИИ ЗАПРОСОВ К TRONK ====================
+async def get_vin_by_gosnumber(gosnumber: str) -> str:
+    """Получение VIN по госномеру через number2vin.ashx."""
+    url = "https://data.tronk.info/number2vin.ashx"
+    params = {"key": TRONK_API_KEY, "gosnumber": gosnumber}
+    try:
+        r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
+        data = r.json()
+        if data.get("error"):
+            return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
+        result = data.get("result", {})
+        vin = result.get("vin")
+        if vin:
+            return vin
+        else:
+            return "❌ По данному госномеру VIN не найден."
+    except Exception as e:
+        return f"❌ Ошибка запроса: {e}"
+
 async def quick_check(identifier: str) -> str:
+    """Быстрая проверка через reportnewcheck.ashx (VIN или госномер)."""
+    # Если это не VIN (длина != 17), пытаемся получить VIN по госномеру
+    if len(identifier) != 17:
+        vin_result = await get_vin_by_gosnumber(identifier)
+        if vin_result.startswith("❌"):
+            return vin_result
+        identifier = vin_result  # теперь identifier — это VIN
+
     url = "https://data.tronk.info/reportnewcheck.ashx"
-    params = {
-        "key": TRONK_API_KEY,
-        "vin": identifier if len(identifier) == 17 else None,
-        "gosnumber": identifier if len(identifier) != 17 else None,
-        "frame": None,  # если нужно
-    }
-    # Убираем None значения
-    params = {k: v for k, v in params.items() if v is not None}
+    params = {"key": TRONK_API_KEY, "vin": identifier}
     try:
         r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
         data = r.json()
@@ -98,16 +134,19 @@ async def quick_check(identifier: str) -> str:
         return f"❌ Ошибка запроса: {e}"
 
 async def full_report(identifier: str) -> str:
-    base_url = "https://data.tronk.info/reportrequest.ashx"
-    # Шаг 1: Постановка в очередь (обязательно mode=setqueue)
-    params = {"key": TRONK_API_KEY, "mode": "setqueue"}
-    if len(identifier) == 17:
-        params["vin"] = identifier
-    else:
-        params["gosnumber"] = identifier
+    """Полный отчёт через reportrequest.ashx (очередь + getstatus + getlink)."""
+    # Если это не VIN, получаем VIN по госномеру
+    if len(identifier) != 17:
+        vin_result = await get_vin_by_gosnumber(identifier)
+        if vin_result.startswith("❌"):
+            return vin_result
+        identifier = vin_result
 
+    base_url = "https://data.tronk.info/reportrequest.ashx"
+
+    # Шаг 1: Постановка в очередь
+    params = {"key": TRONK_API_KEY, "mode": "setqueue", "vin": identifier}
     try:
-        # 1. Постановка в очередь
         r = await asyncio.to_thread(requests.get, base_url, params=params, timeout=20)
         data = r.json()
         if data.get("error"):
@@ -116,14 +155,14 @@ async def full_report(identifier: str) -> str:
         if not task_id:
             return "❌ Не удалось получить ID задачи."
 
-        # 2. Ожидание готовности (максимум 60 секунд)
+        # Шаг 2: Ожидание готовности (максимум 60 секунд)
         for _ in range(12):
             await asyncio.sleep(5)
             status_params = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
             s = await asyncio.to_thread(requests.get, base_url, params=status_params, timeout=10)
             status_data = s.json()
             if status_data.get("status") == "готово":
-                # 3. Получение ссылки
+                # Шаг 3: Получение ссылки
                 link_params = {"key": TRONK_API_KEY, "mode": "getlink", "id": task_id}
                 l = await asyncio.to_thread(requests.get, base_url, params=link_params, timeout=10)
                 link_data = l.json()
@@ -145,8 +184,9 @@ async def start_cmd(msg: Message):
     save_users(users)
     await msg.answer(
         "👋 *Бот проверки автомобилей*\n\n"
-        "Отправьте VIN (17 символов) или госномер после выбора типа проверки.\n\n"
-        "Выберите действие:",
+        "Вы можете отправить VIN (17 символов) или госномер (с русскими или латинскими буквами).\n"
+        "Госномер будет автоматически преобразован и проверен.\n\n"
+        "Выберите тип проверки:",
         parse_mode="Markdown",
         reply_markup=main_kb()
     )
@@ -180,16 +220,19 @@ async def handle_identifier(msg: Message):
     if not waiting:
         await msg.answer("Сначала выберите тип проверки через кнопки.", reply_markup=main_kb())
         return
-    identifier = msg.text.strip().upper()
-    is_vin = len(identifier) == 17
-    if not is_vin and not (2 <= len(identifier) <= 9):
-        await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.")
+    raw_identifier = msg.text.strip().upper()
+    # Транслитерируем возможные русские буквы в госномере
+    identifier = transliterate_gosnumber(raw_identifier)
+    # Простая проверка: если не VIN (17 символов) и не похоже на госномер (2-9 символов) — ошибка
+    if len(identifier) != 17 and not (2 <= len(identifier) <= 9):
+        await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.\n"
+                         "Проверьте правильность ввода (русские буквы автоматически заменяются).")
         return
     await bot.send_chat_action(msg.chat.id, "typing")
     if waiting == "quick":
-        result = await quick_check(identifier, is_vin)
+        result = await quick_check(identifier)
     else:
-        result = await full_report(identifier, is_vin)
+        result = await full_report(identifier)
     await msg.answer(result, parse_mode="Markdown")
     dp["waiting_for"] = None
 
