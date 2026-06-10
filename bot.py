@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "1.0"   # при обновлении меняем цифру
+BOT_VERSION = "1.1"   # при обновлении меняем цифру
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ (ДЛЯ BOTHOST) ====================
 SHARED_DIR = "/app/shared"
