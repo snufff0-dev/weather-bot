@@ -2,7 +2,6 @@ import os
 import json
 import logging
 import asyncio
-import time
 import requests
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types, F
@@ -15,7 +14,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "2.2"
+BOT_VERSION = "2.3"
 
 SHARED_DIR = "/app/shared"
 os.makedirs(SHARED_DIR, exist_ok=True)
@@ -168,7 +167,7 @@ async def handle_vin(msg: Message):
 # ---------- запуск ----------
 async def main():
     await notify_update()
-    print("✅ Бот запущен (только VIN, активные методы TronK)")
+    print(f"✅ Бот запущен. Версия {BOT_VERSION}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
