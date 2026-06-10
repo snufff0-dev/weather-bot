@@ -14,14 +14,14 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
-ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))   # ваш Telegram ID для команд статистики
+ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "1.0"   # текущая версия бота
+BOT_VERSION = "1.0"   # при обновлении меняем цифру
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ (ДЛЯ BOTHOST) ====================
 SHARED_DIR = "/app/shared"
 os.makedirs(SHARED_DIR, exist_ok=True)
-USERS_FILE = os.path.join(SHARED_DIR, "users.json")   # список пользователей (id)
+USERS_FILE = os.path.join(SHARED_DIR, "users.json")
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -47,7 +47,6 @@ users, saved_version = load_users()
 # ==================== ОПОВЕЩЕНИЕ ОБ ОБНОВЛЕНИИ ====================
 async def notify_update():
     if saved_version != BOT_VERSION:
-        # Отправляем сообщение всем пользователям
         for uid in users:
             try:
                 await bot.send_message(
@@ -58,24 +57,24 @@ async def notify_update():
                 await asyncio.sleep(0.05)
             except:
                 pass
-        save_users(users)   # обновляем версию в файле
+        save_users(users)
 
 # ==================== КЛАВИАТУРЫ ====================
 def main_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📋 Быстрая проверка")],
-            [KeyboardButton(text="📄 Полный отчёт")]
+            [KeyboardButton(text="📋 Быстрая проверка (reportnewcheck)")],
+            [KeyboardButton(text="📄 Полный отчёт (reportrequest)")]
         ],
         resize_keyboard=True
     )
 
 # ==================== ФУНКЦИИ ЗАПРОСОВ К TRONK ====================
-async def quick_check(identifier: str) -> str:
-    """Быстрая проверка (reportnewcheck.ashx)"""
+async def quick_check(identifier: str, is_vin: bool) -> str:
+    """Быстрая проверка через reportnewcheck.ashx"""
     url = "https://data.tronk.info/reportnewcheck.ashx"
     params = {"key": TRONK_API_KEY}
-    if len(identifier) == 17:
+    if is_vin:
         params["vin"] = identifier
     else:
         params["gosnumber"] = identifier
@@ -84,63 +83,69 @@ async def quick_check(identifier: str) -> str:
         r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
         data = r.json()
         if data.get("error"):
-            return f"❌ Ошибка: {data.get('error_msg', 'Неизвестная ошибка')}"
+            return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
         result = data.get("result", {})
-        msg = f"🚗 *Результат быстрой проверки*\n"
-        msg += f"• Марка: {result.get('mark', '—')}\n"
-        msg += f"• Модель: {result.get('model', '—')}\n"
-        msg += f"• Год: {result.get('year', '—')}\n"
-        msg += f"• Цвет: {result.get('color', '—')}\n"
-        msg += f"• VIN: {result.get('vin', identifier)}\n"
+        msg = "🚗 *Результат быстрой проверки*\n\n"
+        msg += f"• Марка: {result.get('Marka', '—')}\n"
+        msg += f"• Модель: {result.get('Model', '—')}\n"
+        msg += f"• Год: {result.get('Year', '—')}\n"
+        msg += f"• Цвет: {result.get('Color', '—')}\n"
+        msg += f"• Объём двигателя: {result.get('Volume', '—')} л.\n"
+        msg += f"• Мощность: {result.get('HorsePower', '—')} л.с.\n"
         return msg
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-async def full_report(identifier: str) -> str:
-    """Полный отчёт (reportrequest.ashx) с очередью"""
-    url = "https://data.tronk.info/reportrequest.ashx"
+async def full_report(identifier: str, is_vin: bool) -> str:
+    """Полный отчёт через reportrequest.ashx (очередь + getstatus + getlink)"""
+    base_url = "https://data.tronk.info/reportrequest.ashx"
     params = {"key": TRONK_API_KEY, "mode": "setqueue"}
-    if len(identifier) == 17:
+    if is_vin:
         params["vin"] = identifier
     else:
         params["gosnumber"] = identifier
 
     try:
-        r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
+        # 1. Постановка в очередь
+        r = await asyncio.to_thread(requests.get, base_url, params=params, timeout=20)
         data = r.json()
         if data.get("error"):
-            return f"❌ Ошибка: {data.get('error_msg', 'Неизвестная ошибка')}"
+            return f"❌ Ошибка при постановке в очередь: {data.get('error_msg')}"
         task_id = data.get("id")
         if not task_id:
             return "❌ Не удалось получить ID задачи."
 
-        status_url = "https://data.tronk.info/reportrequest.ashx"
-        for _ in range(10):
+        # 2. Ожидание готовности (максимум 60 секунд)
+        for _ in range(12):
             await asyncio.sleep(5)
             status_params = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
-            s = await asyncio.to_thread(requests.get, status_url, params=status_params, timeout=10)
+            s = await asyncio.to_thread(requests.get, base_url, params=status_params, timeout=10)
             status_data = s.json()
             if status_data.get("status") == "готово":
+                # 3. Получение ссылки
                 link_params = {"key": TRONK_API_KEY, "mode": "getlink", "id": task_id}
-                l = await asyncio.to_thread(requests.get, status_url, params=link_params, timeout=10)
+                l = await asyncio.to_thread(requests.get, base_url, params=link_params, timeout=10)
                 link_data = l.json()
                 pdf_link = link_data.get("link")
-                return f"✅ Отчёт готов: [Скачать PDF]({pdf_link})"
+                if pdf_link:
+                    return f"✅ Отчёт готов: [Скачать PDF]({pdf_link})"
+                else:
+                    return "❌ Отчёт сформирован, но ссылка не получена."
             elif status_data.get("error"):
-                return f"❌ Ошибка при формировании отчёта: {status_data.get('error_msg')}"
-        return "⏳ Время ожидания истекло. Отчёт ещё не готов, попробуйте позже."
+                return f"❌ Ошибка при формировании: {status_data.get('error_msg')}"
+        return "⏳ Время ожидания истекло. Отчёт ещё не готов."
     except Exception as e:
-        return f"❌ Ошибка запроса: {e}"
+        return f"❌ Ошибка API: {e}"
 
-# ==================== ОБРАБОТЧИКИ КОМАНД ====================
+# ==================== ОБРАБОТЧИКИ ====================
 @dp.message(Command("start"))
 async def start_cmd(msg: Message):
-    # Добавляем пользователя в список
     users.add(str(msg.chat.id))
     save_users(users)
     await msg.answer(
-        "👋 Бот проверки автомобилей по VIN/госномеру.\n\n"
-        "Выберите тип проверки:",
+        "👋 *Бот проверки автомобилей*\n\n"
+        "Отправьте VIN (17 символов) или госномер после выбора типа проверки.\n\n"
+        "Выберите действие:",
         parse_mode="Markdown",
         reply_markup=main_kb()
     )
@@ -151,18 +156,19 @@ async def stats_cmd(msg: Message):
         await msg.answer("⛔ Нет прав.")
         return
     await msg.answer(
-        f"📊 Статистика бота (v{BOT_VERSION})\n"
-        f"👥 Всего пользователей: {len(users)}\n"
-        f"💾 Файл: {USERS_FILE}",
+        f"📊 *Статистика*\n"
+        f"Версия: {BOT_VERSION}\n"
+        f"Пользователей: {len(users)}\n"
+        f"Файл: {USERS_FILE}",
         parse_mode="Markdown"
     )
 
-@dp.message(F.text == "📋 Быстрая проверка")
+@dp.message(F.text == "📋 Быстрая проверка (reportnewcheck)")
 async def quick_cmd(msg: Message):
     dp["waiting_for"] = "quick"
     await msg.answer("Введите VIN (17 символов) или госномер:")
 
-@dp.message(F.text == "📄 Полный отчёт")
+@dp.message(F.text == "📄 Полный отчёт (reportrequest)")
 async def full_cmd(msg: Message):
     dp["waiting_for"] = "full"
     await msg.answer("Введите VIN (17 символов) или госномер:")
@@ -171,26 +177,25 @@ async def full_cmd(msg: Message):
 async def handle_identifier(msg: Message):
     waiting = dp.get("waiting_for")
     if not waiting:
-        await msg.answer("Пожалуйста, выберите тип проверки через кнопки меню.", reply_markup=main_kb())
+        await msg.answer("Сначала выберите тип проверки через кнопки.", reply_markup=main_kb())
         return
     identifier = msg.text.strip().upper()
-    # Простая проверка формата
-    if len(identifier) != 17 and not (2 <= len(identifier) <= 9):
-        await msg.answer("❌ Неверный формат. VIN должен содержать 17 символов, госномер — 2-9 символов.")
+    is_vin = len(identifier) == 17
+    if not is_vin and not (2 <= len(identifier) <= 9):
+        await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.")
         return
     await bot.send_chat_action(msg.chat.id, "typing")
     if waiting == "quick":
-        result = await quick_check(identifier)
+        result = await quick_check(identifier, is_vin)
     else:
-        result = await full_report(identifier)
+        result = await full_report(identifier, is_vin)
     await msg.answer(result, parse_mode="Markdown")
     dp["waiting_for"] = None
 
 # ==================== ЗАПУСК ====================
 async def main():
-    await notify_update()   # если версия изменилась – оповестить всех
+    await notify_update()
     print(f"✅ Бот запущен. Версия {BOT_VERSION}")
-    print(f"📁 Пользователей в базе: {len(users)}")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
