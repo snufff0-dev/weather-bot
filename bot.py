@@ -16,9 +16,9 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "2.0"   # при обновлении меняем цифру
+BOT_VERSION = "2.1"
 
-# ==================== ОБЩЕЕ ХРАНИЛИЩЕ (ДЛЯ BOTHOST) ====================
+# ==================== ОБЩЕЕ ХРАНИЛИЩЕ ====================
 SHARED_DIR = "/app/shared"
 os.makedirs(SHARED_DIR, exist_ok=True)
 USERS_FILE = os.path.join(SHARED_DIR, "users.json")
@@ -27,7 +27,7 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 logging.basicConfig(level=logging.INFO)
 
-# ==================== ЗАГРУЗКА/СОХРАНЕНИЕ ПОЛЬЗОВАТЕЛЕЙ ====================
+# ==================== ПОЛЬЗОВАТЕЛИ ====================
 def load_users():
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r', encoding='utf-8') as f:
@@ -63,13 +63,13 @@ async def notify_update():
 def main_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📋 Быстрая проверка (reportnewcheck)")],
-            [KeyboardButton(text="📄 Полный отчёт (reportrequest)")]
+            [KeyboardButton(text="📋 Онлайн-отчёт (reportrequestonline)")],
+            [KeyboardButton(text="📄 Полный отчёт PDF (reportrequest)")]
         ],
         resize_keyboard=True
     )
 
-# ==================== ТРАНСЛИТЕРАЦИЯ РУССКИХ БУКВ В ГОСНОМЕРЕ ====================
+# ==================== ТРАНСЛИТЕРАЦИЯ ====================
 RUS_TO_LAT = {
     'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M',
     'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
@@ -77,18 +77,14 @@ RUS_TO_LAT = {
 }
 
 def transliterate_gosnumber(number: str) -> str:
-    """Заменяет русские буквы в госномере на латинские."""
     result = []
     for ch in number.upper():
-        if ch in RUS_TO_LAT:
-            result.append(RUS_TO_LAT[ch])
-        else:
-            result.append(ch)
+        result.append(RUS_TO_LAT.get(ch, ch))
     return ''.join(result)
 
-# ==================== ФУНКЦИИ ЗАПРОСОВ К TRONK ====================
+# ==================== ПОЛУЧЕНИЕ VIN ПО ГОСНОМЕРУ ====================
 async def get_vin_by_gosnumber(gosnumber: str) -> str:
-    """Получение VIN по госномеру через number2vin.ashx."""
+    """Используем метод number2vin.ashx, если он доступен. Если нет – вернём ошибку."""
     url = "https://data.tronk.info/number2vin.ashx"
     params = {"key": TRONK_API_KEY, "gosnumber": gosnumber}
     try:
@@ -96,46 +92,49 @@ async def get_vin_by_gosnumber(gosnumber: str) -> str:
         data = r.json()
         if data.get("error"):
             return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
-        result = data.get("result", {})
-        vin = result.get("vin")
+        vin = data.get("result", {}).get("vin")
         if vin:
             return vin
-        else:
-            return "❌ По данному госномеру VIN не найден."
+        return "❌ VIN по данному госномеру не найден."
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-async def quick_check(identifier: str) -> str:
-    """Быстрая проверка через reportnewcheck.ashx (VIN или госномер)."""
-    # Если это не VIN (длина != 17), пытаемся получить VIN по госномеру
+# ==================== ОНЛАЙН-ОТЧЁТ (reportrequestonline) ====================
+async def online_report(identifier: str) -> str:
+    """Мгновенный отчёт через reportrequestonline.ashx."""
+    # Если это госномер (не 17 символов), пробуем получить VIN
     if len(identifier) != 17:
         vin_result = await get_vin_by_gosnumber(identifier)
         if vin_result.startswith("❌"):
             return vin_result
-        identifier = vin_result  # теперь identifier — это VIN
+        identifier = vin_result
 
-    url = "https://data.tronk.info/reportnewcheck.ashx"
+    url = "https://data.tronk.info/reportrequestonline.ashx"
     params = {"key": TRONK_API_KEY, "vin": identifier}
     try:
-        r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
+        r = await asyncio.to_thread(requests.get, url, params=params, timeout=30)
         data = r.json()
         if data.get("error"):
             return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
+        # Предполагаем, что result содержит словарь с данными
         result = data.get("result", {})
-        msg = "🚗 *Результат быстрой проверки*\n\n"
+        # Формируем красивое сообщение (ключи могут отличаться, при необходимости подправите)
+        msg = "🚗 *Онлайн-отчёт*\n\n"
         msg += f"• Марка: {result.get('Marka', '—')}\n"
         msg += f"• Модель: {result.get('Model', '—')}\n"
         msg += f"• Год: {result.get('Year', '—')}\n"
         msg += f"• Цвет: {result.get('Color', '—')}\n"
-        msg += f"• Объём двигателя: {result.get('Volume', '—')} л.\n"
+        msg += f"• Объём: {result.get('Volume', '—')} л\n"
         msg += f"• Мощность: {result.get('HorsePower', '—')} л.с.\n"
+        # Если нужно вывести сырой JSON для отладки, раскомментируйте:
+        # msg += f"\n`{json.dumps(result, ensure_ascii=False, indent=2)}`"
         return msg
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-async def full_report(identifier: str) -> str:
-    """Полный отчёт через reportrequest.ashx (очередь + getstatus + getlink)."""
-    # Если это не VIN, получаем VIN по госномеру
+# ==================== ПОЛНЫЙ ОТЧЁТ PDF (reportrequest) ====================
+async def full_pdf_report(identifier: str) -> str:
+    """Полный отчёт с формированием PDF и ссылкой на скачивание."""
     if len(identifier) != 17:
         vin_result = await get_vin_by_gosnumber(identifier)
         if vin_result.startswith("❌"):
@@ -144,7 +143,7 @@ async def full_report(identifier: str) -> str:
 
     base_url = "https://data.tronk.info/reportrequest.ashx"
 
-    # Шаг 1: Постановка в очередь
+    # Шаг 1: постановка в очередь
     params = {"key": TRONK_API_KEY, "mode": "setqueue", "vin": identifier}
     try:
         r = await asyncio.to_thread(requests.get, base_url, params=params, timeout=20)
@@ -155,14 +154,14 @@ async def full_report(identifier: str) -> str:
         if not task_id:
             return "❌ Не удалось получить ID задачи."
 
-        # Шаг 2: Ожидание готовности (максимум 60 секунд)
+        # Шаг 2: ожидание готовности (до 60 секунд)
         for _ in range(12):
             await asyncio.sleep(5)
             status_params = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
             s = await asyncio.to_thread(requests.get, base_url, params=status_params, timeout=10)
             status_data = s.json()
             if status_data.get("status") == "готово":
-                # Шаг 3: Получение ссылки
+                # Шаг 3: получение ссылки
                 link_params = {"key": TRONK_API_KEY, "mode": "getlink", "id": task_id}
                 l = await asyncio.to_thread(requests.get, base_url, params=link_params, timeout=10)
                 link_data = l.json()
@@ -173,7 +172,7 @@ async def full_report(identifier: str) -> str:
                     return "❌ Отчёт сформирован, но ссылка не получена."
             elif status_data.get("error"):
                 return f"❌ Ошибка при формировании: {status_data.get('error_msg')}"
-        return "⏳ Время ожидания истекло. Отчёт ещё не готов."
+        return "⏳ Время ожидания истекло. Отчёт ещё не готов, попробуйте позже."
     except Exception as e:
         return f"❌ Ошибка API: {e}"
 
@@ -184,9 +183,10 @@ async def start_cmd(msg: Message):
     save_users(users)
     await msg.answer(
         "👋 *Бот проверки автомобилей*\n\n"
-        "Вы можете отправить VIN (17 символов) или госномер (с русскими или латинскими буквами).\n"
-        "Госномер будет автоматически преобразован и проверен.\n\n"
-        "Выберите тип проверки:",
+        "Выберите тип отчёта:\n"
+        "• 📋 Онлайн-отчёт – быстрый результат (использует reportrequestonline)\n"
+        "• 📄 Полный отчёт PDF – формируется до минуты, ссылка на скачивание\n\n"
+        "VIN (17 символов) или госномер (русские буквы поддерживаются).",
         parse_mode="Markdown",
         reply_markup=main_kb()
     )
@@ -197,42 +197,36 @@ async def stats_cmd(msg: Message):
         await msg.answer("⛔ Нет прав.")
         return
     await msg.answer(
-        f"📊 *Статистика*\n"
-        f"Версия: {BOT_VERSION}\n"
-        f"Пользователей: {len(users)}\n"
-        f"Файл: {USERS_FILE}",
+        f"📊 *Статистика*\nВерсия: {BOT_VERSION}\nПользователей: {len(users)}\nФайл: {USERS_FILE}",
         parse_mode="Markdown"
     )
 
-@dp.message(F.text == "📋 Быстрая проверка (reportnewcheck)")
-async def quick_cmd(msg: Message):
-    dp["waiting_for"] = "quick"
-    await msg.answer("Введите VIN (17 символов) или госномер:")
+@dp.message(F.text == "📋 Онлайн-отчёт (reportrequestonline)")
+async def online_cmd(msg: Message):
+    dp["waiting_for"] = "online"
+    await msg.answer("Введите VIN или госномер:")
 
-@dp.message(F.text == "📄 Полный отчёт (reportrequest)")
-async def full_cmd(msg: Message):
-    dp["waiting_for"] = "full"
-    await msg.answer("Введите VIN (17 символов) или госномер:")
+@dp.message(F.text == "📄 Полный отчёт PDF (reportrequest)")
+async def pdf_cmd(msg: Message):
+    dp["waiting_for"] = "pdf"
+    await msg.answer("Введите VIN или госномер:")
 
 @dp.message()
 async def handle_identifier(msg: Message):
     waiting = dp.get("waiting_for")
     if not waiting:
-        await msg.answer("Сначала выберите тип проверки через кнопки.", reply_markup=main_kb())
+        await msg.answer("Сначала выберите тип отчёта через кнопки.", reply_markup=main_kb())
         return
-    raw_identifier = msg.text.strip().upper()
-    # Транслитерируем возможные русские буквы в госномере
-    identifier = transliterate_gosnumber(raw_identifier)
-    # Простая проверка: если не VIN (17 символов) и не похоже на госномер (2-9 символов) — ошибка
+    raw = msg.text.strip().upper()
+    identifier = transliterate_gosnumber(raw)
     if len(identifier) != 17 and not (2 <= len(identifier) <= 9):
-        await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.\n"
-                         "Проверьте правильность ввода (русские буквы автоматически заменяются).")
+        await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.")
         return
     await bot.send_chat_action(msg.chat.id, "typing")
-    if waiting == "quick":
-        result = await quick_check(identifier)
+    if waiting == "online":
+        result = await online_report(identifier)
     else:
-        result = await full_report(identifier)
+        result = await full_pdf_report(identifier)
     await msg.answer(result, parse_mode="Markdown")
     dp["waiting_for"] = None
 
