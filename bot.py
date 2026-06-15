@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "3.0"   # финальная версия с тремя методами TronK
+BOT_VERSION = "3.1"
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ ====================
 SHARED_DIR = "/app/shared"
@@ -51,7 +51,7 @@ async def notify_update():
                 pass
         save_users(users)
 
-# ---------- клавиатура (три кнопки) ----------
+# ---------- клавиатура ----------
 def main_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -62,7 +62,7 @@ def main_kb():
         resize_keyboard=True
     )
 
-# ---------- транслитерация госномеров ----------
+# ---------- транслитерация ----------
 RUS_TO_LAT = {
     'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M',
     'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
@@ -99,67 +99,80 @@ async def quick_check(identifier: str) -> str:
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-# ---------- метод 2: онлайн-отчёт (reportrequestonline) ----------
+# ---------- метод 2: онлайн-отчёт (reportrequestonline) с правильной очередью ----------
 async def online_report(identifier: str) -> str:
-    url = "https://data.tronk.info/reportrequestonline.ashx"
-    params = {"key": TRONK_API_KEY, "mode": "setqueue"}
+    base_url = "https://data.tronk.info/reportrequestonline.ashx"
+    # Шаг 1: постановка в очередь
+    params_queue = {"key": TRONK_API_KEY, "mode": "setqueue"}
     if len(identifier) == 17:
-        params["vin"] = identifier
+        params_queue["vin"] = identifier
     else:
-        params["gosnumber"] = identifier
+        params_queue["gosnumber"] = identifier
     try:
-        r = await asyncio.to_thread(requests.get, url, params=params, timeout=30)
-        data = r.json()
-        if data.get("error"):
-            return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
-        result = data.get("result", {})
-        if not result:
-            return "❌ Данные не найдены."
-        msg = "⚡ *Онлайн-отчёт (reportrequestonline)*\n\n"
-        msg += f"• Марка: {result.get('Marka', '—')}\n"
-        msg += f"• Модель: {result.get('Model', '—')}\n"
-        msg += f"• Год: {result.get('Year', '—')}\n"
-        msg += f"• Цвет: {result.get('Color', '—')}\n"
-        msg += f"• Объём: {result.get('Volume', '—')} л\n"
-        msg += f"• Мощность: {result.get('HorsePower', '—')} л.с.\n"
-        # при необходимости можно добавить больше полей
-        return msg
+        queue_resp = await asyncio.to_thread(requests.get, base_url, params=params_queue, timeout=30)
+        queue_data = queue_resp.json()
+        if queue_data.get("error"):
+            return f"❌ Ошибка при постановке в очередь: {queue_data.get('error_msg')}"
+        task_id = queue_data.get("id")
+        if not task_id:
+            return "❌ Не удалось получить ID задачи."
+        # Шаг 2: ожидание готовности (проверка статуса через checkqueue)
+        for _ in range(12):  # ~60 секунд
+            await asyncio.sleep(5)
+            params_status = {"key": TRONK_API_KEY, "mode": "checkqueue", "id": task_id}
+            status_resp = await asyncio.to_thread(requests.get, base_url, params=params_status, timeout=10)
+            status_data = status_resp.json()
+            if status_data.get("status") == "готово":
+                # Шаг 3: получение ссылки
+                params_link = {"key": TRONK_API_KEY, "mode": "getlink", "id": task_id}
+                link_resp = await asyncio.to_thread(requests.get, base_url, params=params_link, timeout=10)
+                link_data = link_resp.json()
+                report_link = link_data.get("url") or link_data.get("link")
+                if report_link:
+                    return f"✅ Онлайн-отчёт готов: [Скачать]({report_link})"
+                else:
+                    return "✅ Отчёт сформирован, но ссылка не получена."
+            elif status_data.get("error"):
+                return f"❌ Ошибка при формировании: {status_data.get('error_msg')}"
+        return "⏳ Время ожидания истекло. Попробуйте позже."
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-# ---------- метод 3: PDF-отчёт (reportrequest) ----------
+# ---------- метод 3: PDF-отчёт (reportrequest) с правильной очередью ----------
 async def pdf_report(identifier: str) -> str:
     base_url = "https://data.tronk.info/reportrequest.ashx"
-    params = {"key": TRONK_API_KEY, "mode": "setqueue"}
+    # Шаг 1: постановка в очередь
+    params_queue = {"key": TRONK_API_KEY, "mode": "setqueue"}
     if len(identifier) == 17:
-        params["vin"] = identifier
+        params_queue["vin"] = identifier
     else:
-        params["gosnumber"] = identifier
+        params_queue["gosnumber"] = identifier
     try:
-        r = await asyncio.to_thread(requests.get, base_url, params=params, timeout=20)
-        data = r.json()
-        if data.get("error"):
-            return f"❌ Ошибка при постановке в очередь: {data.get('error_msg')}"
-        task_id = data.get("id")
+        queue_resp = await asyncio.to_thread(requests.get, base_url, params=params_queue, timeout=30)
+        queue_data = queue_resp.json()
+        if queue_data.get("error"):
+            return f"❌ Ошибка при постановке в очередь: {queue_data.get('error_msg')}"
+        task_id = queue_data.get("id")
         if not task_id:
-            return "❌ Не удалось получить ID задачи"
-        # ожидание готовности (до 60 секунд)
+            return "❌ Не удалось получить ID задачи."
+        # Шаг 2: ожидание готовности (проверка статуса через getstatus)
         for _ in range(12):
             await asyncio.sleep(5)
-            status_params = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
-            s = await asyncio.to_thread(requests.get, base_url, params=status_params, timeout=10)
-            status_data = s.json()
+            params_status = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
+            status_resp = await asyncio.to_thread(requests.get, base_url, params=params_status, timeout=10)
+            status_data = status_resp.json()
             if status_data.get("status") == "готово":
-                link_params = {"key": TRONK_API_KEY, "mode": "getlink", "id": task_id}
-                l = await asyncio.to_thread(requests.get, base_url, params=link_params, timeout=10)
-                link_data = l.json()
-                pdf_link = link_data.get("link")
+                # Шаг 3: получение ссылки
+                params_link = {"key": TRONK_API_KEY, "mode": "getlink", "id": task_id}
+                link_resp = await asyncio.to_thread(requests.get, base_url, params=params_link, timeout=10)
+                link_data = link_resp.json()
+                pdf_link = link_data.get("url") or link_data.get("link")
                 if pdf_link:
-                    return f"✅ [Скачать PDF-отчёт]({pdf_link})"
+                    return f"✅ PDF-отчёт готов: [Скачать]({pdf_link})"
                 else:
-                    return "❌ Отчёт сформирован, но ссылка не получена"
+                    return "✅ Отчёт сформирован, но ссылка не получена."
             elif status_data.get("error"):
-                return f"❌ Ошибка формирования: {status_data.get('error_msg')}"
+                return f"❌ Ошибка при формировании: {status_data.get('error_msg')}"
         return "⏳ Время ожидания истекло. Попробуйте позже."
     except Exception as e:
         return f"❌ Ошибка API: {e}"
@@ -173,8 +186,8 @@ async def start_cmd(msg: Message):
         "👋 *Бот проверки автомобилей*\n\n"
         "Доступные методы:\n"
         "• 📋 Быстрая проверка – базовые данные (марка, модель, год, цвет, объём, мощность)\n"
-        "• ⚡ Онлайн-отчёт – мгновенный подробный отчёт\n"
-        "• 📄 PDF-отчёт – полный отчёт с PDF (требует ожидания)\n\n"
+        "• ⚡ Онлайн-отчёт – мгновенный подробный отчёт (асинхронная очередь)\n"
+        "• 📄 PDF-отчёт – полный отчёт с PDF (асинхронная очередь)\n\n"
         "Введите **VIN (17 символов)** или **госномер** (русские буквы поддерживаются).\n"
         "Выберите тип проверки:",
         parse_mode="Markdown",
@@ -187,31 +200,25 @@ async def stats_cmd(msg: Message):
         await msg.answer("⛔ Нет прав.")
         return
     await msg.answer(
-        f"📊 *Статистика*\n"
-        f"Версия: {BOT_VERSION}\n"
-        f"Пользователей: {len(users)}",
+        f"📊 *Статистика*\nВерсия: {BOT_VERSION}\nПользователей: {len(users)}",
         parse_mode="Markdown"
     )
 
-# ---------- кнопка быстрой проверки ----------
 @dp.message(F.text == "📋 Быстрая проверка (reportnewcheck)")
 async def quick_cmd(msg: Message):
     dp["waiting_for"] = "quick"
     await msg.answer("Введите VIN или госномер:")
 
-# ---------- кнопка онлайн-отчёта ----------
 @dp.message(F.text == "⚡ Онлайн-отчёт (reportrequestonline)")
 async def online_cmd(msg: Message):
     dp["waiting_for"] = "online"
     await msg.answer("Введите VIN или госномер:")
 
-# ---------- кнопка PDF-отчёта ----------
 @dp.message(F.text == "📄 PDF-отчёт (reportrequest)")
 async def pdf_cmd(msg: Message):
     dp["waiting_for"] = "pdf"
     await msg.answer("Введите VIN или госномер:")
 
-# ---------- общий обработчик ввода ----------
 @dp.message()
 async def handle_identifier(msg: Message):
     waiting = dp.get("waiting_for")
@@ -220,7 +227,6 @@ async def handle_identifier(msg: Message):
         return
     raw = msg.text.strip().upper()
     identifier = transliterate_gosnumber(raw)
-    # базовая валидация длины
     if len(identifier) != 17 and not (2 <= len(identifier) <= 9):
         await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.")
         return
