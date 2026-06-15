@@ -9,13 +9,16 @@ from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 
+# ==================== ЗАГРУЗКА ПЕРЕМЕННЫХ ====================
 load_dotenv()
 
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
-BOT_VERSION = "2.3"
 
+BOT_VERSION = "3.0"   # финальная версия с тремя методами TronK
+
+# ==================== ОБЩЕЕ ХРАНИЛИЩЕ ====================
 SHARED_DIR = "/app/shared"
 os.makedirs(SHARED_DIR, exist_ok=True)
 USERS_FILE = os.path.join(SHARED_DIR, "users.json")
@@ -48,17 +51,18 @@ async def notify_update():
                 pass
         save_users(users)
 
-# ---------- клавиатура ----------
+# ---------- клавиатура (три кнопки) ----------
 def main_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="📋 Онлайн-отчёт")],
-            [KeyboardButton(text="📄 PDF-отчёт")]
+            [KeyboardButton(text="📋 Быстрая проверка (reportnewcheck)")],
+            [KeyboardButton(text="⚡ Онлайн-отчёт (reportrequestonline)")],
+            [KeyboardButton(text="📄 PDF-отчёт (reportrequest)")]
         ],
         resize_keyboard=True
     )
 
-# ---------- Транслитерация госномера ----------
+# ---------- транслитерация госномеров ----------
 RUS_TO_LAT = {
     'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M',
     'Н': 'H', 'О': 'O', 'Р': 'P', 'С': 'C', 'Т': 'T',
@@ -66,12 +70,36 @@ RUS_TO_LAT = {
 }
 
 def transliterate_gosnumber(number: str) -> str:
-    result = []
-    for ch in number.upper():
-        result.append(RUS_TO_LAT.get(ch, ch))
-    return ''.join(result)
+    return ''.join(RUS_TO_LAT.get(ch, ch) for ch in number.upper())
 
-# ---------- онлайн-отчёт (reportrequestonline) ----------
+# ---------- метод 1: быстрая проверка (reportnewcheck) ----------
+async def quick_check(identifier: str) -> str:
+    url = "https://data.tronk.info/reportnewcheck.ashx"
+    params = {"key": TRONK_API_KEY}
+    if len(identifier) == 17:
+        params["vin"] = identifier
+    else:
+        params["gosnumber"] = identifier
+    try:
+        r = await asyncio.to_thread(requests.get, url, params=params, timeout=20)
+        data = r.json()
+        if data.get("error"):
+            return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
+        result = data.get("result", {})
+        if not result:
+            return "❌ Данные по указанному идентификатору не найдены."
+        msg = "🚗 *Быстрая проверка (reportnewcheck)*\n\n"
+        msg += f"• Марка: {result.get('Marka', '—')}\n"
+        msg += f"• Модель: {result.get('Model', '—')}\n"
+        msg += f"• Год: {result.get('Year', '—')}\n"
+        msg += f"• Цвет: {result.get('Color', '—')}\n"
+        msg += f"• Объём двигателя: {result.get('Volume', '—')} л\n"
+        msg += f"• Мощность: {result.get('HorsePower', '—')} л.с.\n"
+        return msg
+    except Exception as e:
+        return f"❌ Ошибка запроса: {e}"
+
+# ---------- метод 2: онлайн-отчёт (reportrequestonline) ----------
 async def online_report(identifier: str) -> str:
     url = "https://data.tronk.info/reportrequestonline.ashx"
     params = {"key": TRONK_API_KEY, "mode": "setqueue"}
@@ -83,23 +111,23 @@ async def online_report(identifier: str) -> str:
         r = await asyncio.to_thread(requests.get, url, params=params, timeout=30)
         data = r.json()
         if data.get("error"):
-            return f"❌ Ошибка: {data.get('error_msg', 'Неизвестная ошибка')}"
+            return f"❌ Ошибка TronK: {data.get('error_msg', 'Неизвестная ошибка')}"
         result = data.get("result", {})
-        if result:
-            msg = "🚗 *Онлайн-отчёт*\n\n"
-            msg += f"• Марка: {result.get('Marka', '—')}\n"
-            msg += f"• Модель: {result.get('Model', '—')}\n"
-            msg += f"• Год: {result.get('Year', '—')}\n"
-            msg += f"• Цвет: {result.get('Color', '—')}\n"
-            msg += f"• Объём: {result.get('Volume', '—')} л\n"
-            msg += f"• Мощность: {result.get('HorsePower', '—')} л.с.\n"
-            return msg
-        else:
-            return "❌ Не удалось получить данные. Возможно, идентификатор не найден."
+        if not result:
+            return "❌ Данные не найдены."
+        msg = "⚡ *Онлайн-отчёт (reportrequestonline)*\n\n"
+        msg += f"• Марка: {result.get('Marka', '—')}\n"
+        msg += f"• Модель: {result.get('Model', '—')}\n"
+        msg += f"• Год: {result.get('Year', '—')}\n"
+        msg += f"• Цвет: {result.get('Color', '—')}\n"
+        msg += f"• Объём: {result.get('Volume', '—')} л\n"
+        msg += f"• Мощность: {result.get('HorsePower', '—')} л.с.\n"
+        # при необходимости можно добавить больше полей
+        return msg
     except Exception as e:
         return f"❌ Ошибка запроса: {e}"
 
-# ---------- PDF-отчёт (reportrequest) ----------
+# ---------- метод 3: PDF-отчёт (reportrequest) ----------
 async def pdf_report(identifier: str) -> str:
     base_url = "https://data.tronk.info/reportrequest.ashx"
     params = {"key": TRONK_API_KEY, "mode": "setqueue"}
@@ -111,11 +139,11 @@ async def pdf_report(identifier: str) -> str:
         r = await asyncio.to_thread(requests.get, base_url, params=params, timeout=20)
         data = r.json()
         if data.get("error"):
-            return f"❌ Ошибка: {data.get('error_msg')}"
+            return f"❌ Ошибка при постановке в очередь: {data.get('error_msg')}"
         task_id = data.get("id")
         if not task_id:
             return "❌ Не удалось получить ID задачи"
-
+        # ожидание готовности (до 60 секунд)
         for _ in range(12):
             await asyncio.sleep(5)
             status_params = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
@@ -136,15 +164,19 @@ async def pdf_report(identifier: str) -> str:
     except Exception as e:
         return f"❌ Ошибка API: {e}"
 
-# ---------- обработчики ----------
+# ==================== ОБРАБОТЧИКИ ====================
 @dp.message(Command("start"))
 async def start_cmd(msg: Message):
     users.add(str(msg.chat.id))
     save_users(users)
     await msg.answer(
         "👋 *Бот проверки автомобилей*\n\n"
-        "Введите *VIN-код* (17 символов) или *госномер* (русские буквы поддерживаются).\n\n"
-        "Выберите тип отчёта:",
+        "Доступные методы:\n"
+        "• 📋 Быстрая проверка – базовые данные (марка, модель, год, цвет, объём, мощность)\n"
+        "• ⚡ Онлайн-отчёт – мгновенный подробный отчёт\n"
+        "• 📄 PDF-отчёт – полный отчёт с PDF (требует ожидания)\n\n"
+        "Введите **VIN (17 символов)** или **госномер** (русские буквы поддерживаются).\n"
+        "Выберите тип проверки:",
         parse_mode="Markdown",
         reply_markup=main_kb()
     )
@@ -154,41 +186,59 @@ async def stats_cmd(msg: Message):
     if msg.from_user.id != ADMIN_ID:
         await msg.answer("⛔ Нет прав.")
         return
-    await msg.answer(f"📊 Статистика\nВерсия {BOT_VERSION}\nПользователей: {len(users)}", parse_mode="Markdown")
+    await msg.answer(
+        f"📊 *Статистика*\n"
+        f"Версия: {BOT_VERSION}\n"
+        f"Пользователей: {len(users)}",
+        parse_mode="Markdown"
+    )
 
-@dp.message(F.text == "📋 Онлайн-отчёт")
+# ---------- кнопка быстрой проверки ----------
+@dp.message(F.text == "📋 Быстрая проверка (reportnewcheck)")
+async def quick_cmd(msg: Message):
+    dp["waiting_for"] = "quick"
+    await msg.answer("Введите VIN или госномер:")
+
+# ---------- кнопка онлайн-отчёта ----------
+@dp.message(F.text == "⚡ Онлайн-отчёт (reportrequestonline)")
 async def online_cmd(msg: Message):
     dp["waiting_for"] = "online"
-    await msg.answer("Введите VIN (17 символов) или госномер:")
+    await msg.answer("Введите VIN или госномер:")
 
-@dp.message(F.text == "📄 PDF-отчёт")
+# ---------- кнопка PDF-отчёта ----------
+@dp.message(F.text == "📄 PDF-отчёт (reportrequest)")
 async def pdf_cmd(msg: Message):
     dp["waiting_for"] = "pdf"
-    await msg.answer("Введите VIN (17 символов) или госномер:")
+    await msg.answer("Введите VIN или госномер:")
 
+# ---------- общий обработчик ввода ----------
 @dp.message()
 async def handle_identifier(msg: Message):
     waiting = dp.get("waiting_for")
     if not waiting:
-        await msg.answer("Сначала выберите тип отчёта через кнопки.", reply_markup=main_kb())
+        await msg.answer("Сначала выберите тип проверки через кнопки.", reply_markup=main_kb())
         return
     raw = msg.text.strip().upper()
     identifier = transliterate_gosnumber(raw)
+    # базовая валидация длины
     if len(identifier) != 17 and not (2 <= len(identifier) <= 9):
         await msg.answer("❌ Неверный формат. VIN = 17 символов, госномер = 2‑9 символов.")
         return
     await bot.send_chat_action(msg.chat.id, "typing")
-    if waiting == "online":
+    if waiting == "quick":
+        result = await quick_check(identifier)
+    elif waiting == "online":
         result = await online_report(identifier)
     else:
         result = await pdf_report(identifier)
     await msg.answer(result, parse_mode="Markdown")
     dp["waiting_for"] = None
 
-# ---------- запуск ----------
+# ==================== ЗАПУСК ====================
 async def main():
     await notify_update()
-    print("✅ Бот запущен (версия 2.3, исправлен вызов методов TronK)")
+    print(f"✅ Бот запущен. Версия {BOT_VERSION}")
+    print("Активные методы TronK: reportnewcheck, reportrequestonline, reportrequest")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
