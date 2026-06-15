@@ -16,7 +16,7 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 TRONK_API_KEY = os.getenv('TRONK_API_KEY')
 ADMIN_ID = int(os.getenv('ADMIN_ID', '0'))
 
-BOT_VERSION = "3.3"
+BOT_VERSION = "3.4"
 
 # ==================== ОБЩЕЕ ХРАНИЛИЩЕ ====================
 SHARED_DIR = "/app/shared"
@@ -117,8 +117,8 @@ async def online_report(identifier: str) -> str:
         if not task_id:
             return "❌ Не удалось получить ID задачи."
 
-        # Шаг 2: ожидание готовности (проверка через checkqueue)
-        for attempt in range(12):
+        # Шаг 2: ожидание готовности (проверка через checkqueue) – увеличенное время
+        for attempt in range(24):  # 24 * 5 = 120 секунд
             await asyncio.sleep(5)
             params_status = {"key": TRONK_API_KEY, "mode": "checkqueue", "id": task_id}
             s = await asyncio.to_thread(requests.get, base_url, params=params_status, timeout=10)
@@ -135,7 +135,7 @@ async def online_report(identifier: str) -> str:
                     return "✅ Отчёт сформирован, но ссылка не получена."
             elif status_data.get("error"):
                 return f"❌ Ошибка при формировании: {status_data.get('error_msg')}"
-        return "⏳ Время ожидания истекло. Попробуйте позже."
+        return "⏳ Время ожидания истекло. Отчёт всё ещё не готов, попробуйте позже."
     except Exception as e:
         return f"❌ Ошибка API: {e}"
 
@@ -157,8 +157,8 @@ async def pdf_report(identifier: str) -> str:
         if not task_id:
             return "❌ Не удалось получить ID задачи."
 
-        # Шаг 2: ожидание готовности (проверка через getstatus)
-        for attempt in range(12):
+        # Шаг 2: ожидание готовности (проверка через getstatus) – увеличенное время
+        for attempt in range(24):  # 24 * 5 = 120 секунд
             await asyncio.sleep(5)
             params_status = {"key": TRONK_API_KEY, "mode": "getstatus", "id": task_id}
             s = await asyncio.to_thread(requests.get, base_url, params=params_status, timeout=10)
@@ -175,7 +175,7 @@ async def pdf_report(identifier: str) -> str:
                     return "✅ Отчёт сформирован, но ссылка не получена."
             elif status_data.get("error"):
                 return f"❌ Ошибка при формировании: {status_data.get('error_msg')}"
-        return "⏳ Время ожидания истекло. Попробуйте позже."
+        return "⏳ Время ожидания истекло. Отчёт всё ещё не готов, попробуйте позже."
     except Exception as e:
         return f"❌ Ошибка API: {e}"
 
@@ -188,8 +188,8 @@ async def start_cmd(msg: Message):
         "👋 *Бот проверки автомобилей*\n\n"
         "Доступные методы:\n"
         "• 📋 Быстрая проверка – базовые данные (марка, модель, год, цвет, объём, мощность)\n"
-        "• ⚡ Онлайн-отчёт – подробный отчёт (формируется до 1 минуты)\n"
-        "• 📄 PDF-отчёт – полный отчёт с PDF (формируется до 1 минуты)\n\n"
+        "• ⚡ Онлайн-отчёт – подробный отчёт (формируется до 2 минут)\n"
+        "• 📄 PDF-отчёт – полный отчёт с PDF (формируется до 2 минут)\n\n"
         "Введите **VIN (17 символов)** или **госномер** (русские буквы поддерживаются).\n"
         "Выберите тип проверки:",
         parse_mode="Markdown",
